@@ -54,6 +54,7 @@ class PseudoEpochLoader:
         return self._pseudo_epoch * self._iter_per_epoch + self._iter
 
     def next(self):
+        # TODO
         self._iter += 1
         if self._iter >= self._iter_per_epoch:
             self._iter = -1

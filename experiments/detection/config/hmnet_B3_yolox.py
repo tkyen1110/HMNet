@@ -28,7 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys
+import sys, os
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lrsch
@@ -51,6 +51,7 @@ backbone = dict(
     output_dims  = [256, 256, 256],
     num_heads    = [4, 8,  8],
     depth        = [1, 3,  9],
+    warmup       = 0, # TODO
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -185,16 +186,16 @@ class TrainSettings(object):
             RandomCrop(crop_size=INPUT_SIZE, const_image=0, clip_border=False, bbox_filter_by_center=True),
             RandomFlip(prob=0.5, direction='H'),
         ])
-
+        HMNet_dataset = '/home/tkyen/opencv_practice/data/Gen1_Automotive/HMNet'
         train_dataset = EventPacketStream(
-            fpath_evt_lst      = './data/gen1/list/train/events.txt',
-            fpath_lbl_lst      = './data/gen1/list/train/labels.txt',
-            base_path          = './data/gen1',
-            fpath_meta         = './data/gen1/list/train/meta.pkl',
-            fpath_gt_duration  = './data/gen1/list/train/gt_interval.csv',
+            fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
+            fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),
+            base_path          = '',
+            fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
+            fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
             video_duration     = 60e6,
-            train_duration     = TRAIN_DURATION,
-            delta_t            = DELTA_T,
+            train_duration     = TRAIN_DURATION, # 200e3 us
+            delta_t            = DELTA_T,        # 5e3   us
             skip_ts            = 0,
             use_nearest_label  = False,
             sampling           = 'label',
@@ -209,7 +210,7 @@ class TrainSettings(object):
         return train_dataset
 
     loader_param = dict(
-        batch_size  = 16,
+        batch_size  = 8,
         shuffle     = True,
         num_workers = 4,
         pin_memory  = True,
@@ -228,7 +229,7 @@ class TrainSettings(object):
         return model
 
     # ======== optimizer settings ========
-    N_SAMPLES = 72371
+    N_SAMPLES = 72371 # TODO
     NUM_EPOCHS = 90
     bsize = loader_param['batch_size']
     iter_per_epoch = N_SAMPLES // bsize

@@ -408,7 +408,7 @@ class YOLOXHead(BlockBase):
         n_ch = 5 + self.num_classes
         hsize, wsize = output.shape[-2:]
         if grid.shape[2:4] != output.shape[2:4]:
-            yv, xv = torch.meshgrid(torch.arange(hsize, device=output.device), torch.arange(wsize, device=output.device), indexing='ij')
+            yv, xv = torch.meshgrid(torch.arange(hsize, device=output.device), torch.arange(wsize, device=output.device)) # , indexing='ij'
             grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype)
             self.grids[k] = grid
 

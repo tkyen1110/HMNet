@@ -645,17 +645,18 @@ class TokenGrouping(BlockBase):
             self.attn_mask = self._make_attn_mask(default_input_size, torch.device('cpu'))
 
     def build(self, x: Tensor, x_meta: dict, input_shape: str = 'seq', output_shape: str = 'seq') -> Tuple[Tensor,Tensor]:
+        # x.shape = torch.Size([B=8, HxW=285, C=256]) ; x_meta = {'shape': (B=8, H=15, W=19)}
         B, H, W = x_meta['shape']
-        self.org_size = (B, H, W)
+        self.org_size = (B, H, W) # (8, 15, 19)
 
         if self.grouping == 'none':
             return x, None
         if H <= self.window_size[0] and W <= self.window_size[1]:
             return x, None
 
-        x = self._to_in(x, (H,W), input_shape)
+        x = self._to_in(x, (H,W), input_shape) # x.shape = torch.Size([8, 15, 19, 256])
 
-        x = self._padding(x)
+        x = self._padding(x) # x.shape = torch.Size([8, 21, 21, 256])
 
         attn_mask = self._make_attn_mask(self.padded_size[-2:], x.device) if self.cyclic_shift else None
 
@@ -735,7 +736,7 @@ class TokenGrouping(BlockBase):
         return F.pad(x, padding, mode='constant', value=0)
 
     def _window_partition(self, x: Tensor) -> Tensor:
-        B, H, W, C = x.shape
+        B, H, W, C = x.shape # x.shape = torch.Size([8, 21, 21, 256])
         h, w = self.window_size
 
         if h == 1 and w == 1:
@@ -1157,6 +1158,7 @@ class CrossAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         self.use_relative_pos_bias = use_relative_pos_bias
+
         if self.use_relative_pos_bias:
             rcoords, table_size = get_relative_position_indices(wsize, kv_wsize)
             self.register_buffer("relative_position_indices", rcoords)
@@ -1164,14 +1166,19 @@ class CrossAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, z: Tensor, x: Tensor, z_meta: dict, x_meta: dict, z_pos: Optional[Tensor] = None, x_pos: Optional[Tensor] = None) -> Tensor:
+        # z.shape = torch.Size([B=8, 285, 256]) ; z_meta = {'shape': (B=8, 15, 19)}
         z, _ = self.grouping.build(z, z_meta)
         x, _ = self.kv_grouping.build(x, x_meta)
 
-        B, N0, C = z.shape
-        B, N1, _ = x.shape
+        B, N0, C = z.shape # z.shape = torch.Size([63, 49, 256])
+        B, N1, _ = x.shape # x.shape = torch.Size([63, 49, 256])
 
         q, k, v = self.qkv(z, context=x)                      # q = (B, H, N0, C)
                                                               # k, v = (B, H, N1, C)
+        # q.shape = torch.Size([63, 8, 49, 32])
+        # k.shape = torch.Size([63, 8, 49, 32])
+        # v.shape = torch.Size([63, 8, 49, 32])
+
         if z_pos is not None:
             q = q + z_pos
         if x_pos is not None:
@@ -1179,7 +1186,7 @@ class CrossAttention(nn.Module):
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))                      # attn = (B, H, N0, N1)
-
+        # attn.shape = torch.Size([63, 8, 49, 49])
         if self.use_relative_pos_bias:
             rpi = self.relative_position_indices
             bias = self.relative_position_bias(rpi[0], rpi[1])  # bias = (N0*N1, H)
@@ -1190,9 +1197,9 @@ class CrossAttention(nn.Module):
         m = (attn @ v).transpose(1, 2).reshape(B, N0, C)
         m = self.proj(m)
         m = self.proj_drop(m)
-
+        # m.shape = torch.Size([63, 49, 256])
         m = self.grouping.resolve(m)
-
+        # m.shape = torch.Size([7, 285, 256])
         return m
 
 def get_relative_position_indices(window1: Tuple[int], window2: Tuple[int]) -> Tuple[Tensor,list]:

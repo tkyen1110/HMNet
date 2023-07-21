@@ -58,6 +58,26 @@ PSEE_ID2NAMES = {
     1 : 'pedestrian',
 }
 
+# HMNet_dataset = '/home/tkyen/opencv_practice/data/Gen1_Automotive/HMNet'
+# train_dataset = EventPacketStream(
+#     fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
+#     fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),
+#     base_path          = '',
+#     fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
+#     fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
+#     video_duration     = 60e6,
+#     train_duration     = TRAIN_DURATION, # 200e3
+#     delta_t            = DELTA_T, # 5e3
+#     skip_ts            = 0,
+#     use_nearest_label  = False,
+#     sampling           = 'label',
+#     min_box_diag       = 30,
+#     min_box_side       = 10,
+#     random_time_scaling = False,
+#     start_index_aug_method = 'end',
+#     start_index_aug_ratio = 0.25,
+#     event_transform    = train_transform,
+# )
 class EventPacket(data.Dataset):
     def __init__(self, fpath_evt_lst=None, fpath_lbl_lst=None, base_path='', fpath_meta=None, fpath_gt_duration=None, video_duration=6e7, train_duration=5e4,
                  fpath_sampling=None, sampling='random', start_index_aug_method='center', start_index_aug_ratio=1., sampling_stride=-1,
@@ -77,8 +97,8 @@ class EventPacket(data.Dataset):
         self.downsample_packet_length = downsample_packet_length or train_duration
         self.start_index_aug_method = start_index_aug_method
         self.start_index_aug_ratio = start_index_aug_ratio
-        self.video_duration = int(video_duration)
-        self.train_duration = int(train_duration)
+        self.video_duration = int(video_duration) # 60e6  us
+        self.train_duration = int(train_duration) # 200e3 us
         self.random_time_scaling = random_time_scaling
         self.min_time_scale = min_time_scale
         self.max_time_scale = max_time_scale
@@ -97,7 +117,7 @@ class EventPacket(data.Dataset):
         elif sampling == 'label':
             self.sampling_timings = []
             for ifile, fname_lbl in enumerate(self.list_fpath_lbl):
-                seg_indices = np.unique(np.load(self._get_path(fname_lbl))['ts'] // 1000).tolist()
+                seg_indices = np.unique(np.load(self._get_path(fname_lbl))['t'] // 1000).tolist()
                 self.sampling_timings += [ (ifile, seg_index) for seg_index in seg_indices ]
         elif sampling == 'regular':
             self.sampling_timings = []
@@ -134,7 +154,7 @@ class EventPacket(data.Dataset):
         else:
             time_scaling = 1
 
-        train_duration = int(self.train_duration * time_scaling)
+        train_duration = int(self.train_duration * time_scaling)  # 200e3 us
 
         fpath_evt, fpath_lbl, base_time, ev_range, gt_duration = self._choose_file_and_time(index, train_duration)
         events, labels = self._load(fpath_evt, fpath_lbl, base_time, train_duration, ev_range, gt_duration)
@@ -157,10 +177,11 @@ class EventPacket(data.Dataset):
         bbox_dict = self._labels2bboxdict(labels)
 
         if self.event_transform is not None:
-            event_dict, bbox_dict, image_meta = self.event_transform(event_dict, bbox_dict, image_meta, types=['event', 'bbox', 'meta'])
+            event_dict, bbox_dict, image_meta = self.event_transform(event_dict, bbox_dict, image_meta, types=['event', 'bbox', 'meta']) # TODO: to read
 
         labels = self._bboxdict2labels(bbox_dict)
-        labels = self._label_padding(labels, train_duration, gt_duration)
+        labels = self._label_padding(labels, train_duration, gt_duration) # TODO: to read
+
         if keep_latest_labels:
             labels = self._keep_latest_labels(labels)
         bbox_dict = self._labels2bboxdict(labels)
@@ -193,7 +214,7 @@ class EventPacket(data.Dataset):
         events = np.array(events)
         events['p'] = (events['p'] - 0.5) * 2
 
-        labels = self._load_label_delta_t(fpath_lbl, time, duration+gt_duration)
+        labels = self._load_label_delta_t(fpath_lbl, time, duration+gt_duration) # TODO: Why duration+gt_duration?
 
         del npy
 
@@ -207,6 +228,10 @@ class EventPacket(data.Dataset):
         return lbl
 
     def _augment_index(self, seg_index, method, aug_ratio, nseg_per_packet, nseg_per_video):
+        # method = 'end'
+        # aug_ratio = 0.25
+        # nseg_per_packet = 200
+        # nseg_per_video = 60000
         whole_range = nseg_per_packet - 1
         aug_range = int(whole_range * aug_ratio)
         if method == 'none':
@@ -234,8 +259,8 @@ class EventPacket(data.Dataset):
         return seg_index, True
 
     def _choose_file_and_time(self, index, train_duration):
-        nseg_per_packet = int(train_duration / 1000)
-        nseg_per_video = int(self.video_duration / 1000)
+        nseg_per_packet = int(train_duration / 1000) # 200
+        nseg_per_video = int(self.video_duration / 1000) # 60000
 
         if self.sampling == 'random':
             ifile = random.randint(0, len(self.list_fpath_evt)-1)
@@ -465,7 +490,26 @@ class EventFrame(EventPacket):
 
         return image, bbox_dict, meta_data
 
-
+# HMNet_dataset = '/home/tkyen/opencv_practice/data/Gen1_Automotive/HMNet'
+# train_dataset = EventPacketStream(
+#     fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
+#     fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),
+#     base_path          = '',
+#     fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
+#     fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
+#     video_duration     = 60e6,
+#     train_duration     = TRAIN_DURATION, # 200e3
+#     delta_t            = DELTA_T, # 5e3
+#     skip_ts            = 0,
+#     use_nearest_label  = False,
+#     sampling           = 'label',
+#     min_box_diag       = 30,
+#     min_box_side       = 10,
+#     random_time_scaling = False,
+#     start_index_aug_method = 'end',
+#     start_index_aug_ratio = 0.25,
+#     event_transform    = train_transform,
+# )
 class EventPacketStream(EventPacket):
     def __init__(self, *args, skip_ts=0, delta_t=1000, stream_stride=None, use_nearest_label=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -487,11 +531,12 @@ class EventPacketStream(EventPacket):
         train_duration = int(self.train_duration * time_scaling)
         delta_t        = int(self.delta_t * time_scaling)
         stride_t       = int(self.stride_t * time_scaling)
-        num_frames     = int(math.ceil(train_duration / stride_t))
+        num_frames     = int(math.ceil(train_duration / stride_t)) # 200e3 us / 5e3 us = 40
 
         # split data into sub-packets
         times_evt = events[:,0].astype(np.int)
         times_lbl = labels[:,0].astype(np.int)
+
         segment_indices_evt = times_evt // stride_t
         segment_indices_lbl = times_lbl // stride_t
 

@@ -28,21 +28,15 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('target', type=str, choices=['train', 'val', 'test'], help='')
-    parser.add_argument('--split' , type=str, default='1/1', help='')
-    args = parser.parse_args()
-
+import argparse
 import numpy as np
 from hmnet.utils.common import get_list, get_chunk, mkdir
 
-def main():
-    dpath_out = args.target + '_meta'
+def main(args):
+    dpath_out = args.dpath_out
     mkdir(dpath_out)
 
-    list_fpath = get_list(f'./{args.target}_evt/', ext='npy')
+    list_fpath = get_list(f'{args.dpath}', ext='npy')
     list_fpath = get_chunk(list_fpath, chunk_str=args.split)
 
     for fpath in list_fpath:
@@ -67,4 +61,9 @@ def pad_index(pos, count):
     return pos
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    parser.add_argument('--split' , type=str, default='1/1', help='')
+    args = parser.parse_args()
+    main(args)

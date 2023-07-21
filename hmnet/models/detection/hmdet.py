@@ -93,6 +93,11 @@ class HMDet(BlockBase):
         self.bbox_head = self.bbox_head.compile(backend, fp16, input_shapes)
 
     def forward(self, list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, init_states=True) -> Tensor:
+        # list_events       (list of list) = [Ts, B] = [40, 8]
+        # list_image_metas  (list of list) = [Ts, B] = [40, 8]
+        # list_gt_bboxes    (list of list) = [Ts, B] = [40, 8]
+        # list_gt_labels    (list of list) = [Ts, B] = [40, 8]
+        # list_ignore_masks (list of list) = [Ts, B] = [40, 8]
         if init_states:
             self.idx_offset = 0
 
@@ -196,9 +201,9 @@ class HMDet(BlockBase):
             out_gt_bboxes = [ torch.empty(0,4) ]
             out_gt_labels = [ torch.empty(0,1) ]
             out_ignore_masks = [ torch.empty(0,1) ]
-            z1_out = self.backbone.memory1.out_buffer[:1]
-            z2_out = self.backbone.memory2.out_buffer[:1]
-            z3_out = self.backbone.memory3.out_buffer[:1]
+            z1_out = self.backbone.memory1.out_buffer[:1] # shape = torch.Size([1, 256, 60, 76])
+            z2_out = self.backbone.memory2.out_buffer[:1] # shape = torch.Size([1, 256, 30, 38])
+            z3_out = self.backbone.memory3.out_buffer[:1] # shape = torch.Size([1, 256, 15, 19])
             coef = 0
         else:
             coef = 1
@@ -259,7 +264,7 @@ class HMDet(BlockBase):
                 time_indices.append(tidx)
 
         time_indices = torch.tensor(time_indices).long()
-        mask = torch.logical_and(time_indices < len(list_gt), (time_indices + idx_offset) > self.backbone.warmup)
+        mask = torch.logical_and(time_indices < len(list_gt), (time_indices + idx_offset) > self.backbone.warmup) # self.backbone.warmup = 20
         time_indices = time_indices[mask]
 
         return time_indices

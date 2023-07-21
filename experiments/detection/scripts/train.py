@@ -29,23 +29,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('config', type=str, help='Config file')
-parser.add_argument('--seed', type=int, default=42, help='')
-parser.add_argument('--single'    , action='store_true', help='Run in single GPU')
-parser.add_argument('--amp'       , action='store_true', help='Use automatic mixed precision')
-parser.add_argument('--debug'     , action='store_true', help='Run in debug mode')
-parser.add_argument('--clean'     , action='store_true', help='Clear workspace if already exist')
-parser.add_argument('--overwrite' , action='store_true', help='Overwrite workspace')
-parser.add_argument('-q','--quiet', action='store_true', help='Surpress standart output')
-# Arguments for DDP
-parser.add_argument('--distributed', action='store_true', help='Enable distributed data parallel')
-parser.add_argument('--master', type=str, default='localhost', help='[DDP] IP address or name of a master node (default: "localhost")')
-parser.add_argument('--node'  , type=str, default='1/1'      , help='[DDP] Specify node index and total number of nodes in the form of "{Node_Index}/{Total_Number_of_Nodes}" (e.g. 1/2, 2/2).\
-                                                                     Master node must have node index = 1.\
-                                                                     Specify "1/1" for single node DDP (default)')
-args = parser.parse_args()
-
 import os
 import sys
 import shutil
@@ -65,6 +48,7 @@ from torch.cuda.amp import autocast, GradScaler
 import torch.multiprocessing as mp
 
 from hmnet.models.base.init import load_state_dict_matched
+from hmnet.utils.common import set_logger as utils_set_logger
 from hmnet.utils.common import makedirs, fix_seed, split_list, MovingAverageMeter
 from hmnet.dataset.custom_loader import PseudoEpochLoader
 
@@ -135,6 +119,8 @@ def main(local_rank, args, dist_settings=None):
     num_epochs = (config.maxiter - 1) // config.iter_per_epoch + 1
 
     # iter epochs
+    config.segment_duration = 200e3 #TODO
+    config.num_train_segments = 1   #TODO
     for epoch in range(start_epoch, num_epochs):
 
         train(epoch, train_loader, model, optimizer, scheduler, scaler, rank, config)
@@ -147,7 +133,7 @@ def main(local_rank, args, dist_settings=None):
                 'optimizer' : optimizer.state_dict(),
                 'scaler'    : scaler.state_dict(),
             }
-            save_checkpoint(checkpoint, config.dpath_out, filename=f'/checkpoint_{epoch+1}.pth.tar')
+            save_checkpoint(checkpoint, config.dpath_out, filename=f'checkpoint_{epoch+1}.pth.tar')
 
     if config.distributed:
         dist.barrier()
@@ -155,7 +141,7 @@ def main(local_rank, args, dist_settings=None):
 
 def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     print_log('start epoch', rank, config)
-    
+
     # switch to train mode
     model.train()
 
@@ -165,18 +151,17 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     meter.timer_start()
 
     for batch_idx, data in enumerate(loader):
-
         list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks = parse_event_data(data)
+        # list_events (list of list) = [T, B] = [40, 8]
         meter.record_data_time()
 
         segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
-
         seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks = \
                 split_into_segments(list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, segment_duration=segment_duration, num_train_segments=config.num_train_segments)
+        # seg_events (list of list) = [SegNum, Ts, B] = [1, 40, 8] where SegNum * Ts = T
 
         for seg_idx, (events, image_metas, gt_bboxes, gt_labels, ignore_masks) in enumerate(zip(seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks)):
-
-            events = to_device(events, config.device)
+            events = to_device(events, config.device) # events (list of list) = [Ts, B] = [40, 8]
             gt_bboxes = to_device(gt_bboxes, config.device)
             gt_labels = to_device(gt_labels, config.device)
             ignore_masks = to_device(ignore_masks, config.device)
@@ -459,6 +444,7 @@ def to_device(data, device, non_blocking=True):
 
 def load_params_if_specified(model, rank, config):
     fpath_load = getattr(config, 'load', '')
+
     if fpath_load is not None and fpath_load != '':
         state_dict = torch.load(fpath_load, map_location=config.device)['state_dict']
         no_matching = load_state_dict_matched(model, state_dict)
@@ -488,10 +474,11 @@ def resume_if_specified(model, optimizer, scaler, config):
 def save_checkpoint(state, dpath_out, filename='checkpoint.pth.tar'):
     fpath_chk    = dpath_out + '/' + filename
     torch.save(state, fpath_chk)
-
+    '''
     fpath_latest = dpath_out + '/' + 'checkpoint.pth.tar'
     if fpath_chk != fpath_latest:
         shutil.copyfile(fpath_chk, fpath_latest)
+    '''
 
 def prepair_workspace(config):
     dpath_out    = config.dpath_out
@@ -517,7 +504,7 @@ def set_logger(rank, config):
         # setup logger
         level = getattr(config, 'log_level', 20)
         logfile = config.dpath_out + '/pytorch.log'
-        config.logger = utils.set_logger(config.quiet, logfile, level)
+        config.logger = utils_set_logger(config.quiet, logfile, level)
 
 def set_meter(rank, config):
     # setup meter
@@ -535,9 +522,13 @@ def get_config(args):
     config.seed = args.seed
     config.single = args.single
     config.amp = args.amp
+    # args.debug
     config.clean = args.clean
     config.overwrite = args.overwrite
     config.quiet = args.quiet
+    config.distributed = args.distributed
+    # args.master
+    # args.node
     config.start_epoch = 0
 
     if args.debug == True:
@@ -623,6 +614,23 @@ def parse_event_data(inputs):
 
 if __name__ == '__main__':
     __spec__ = None
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config', type=str, help='Config file')
+    parser.add_argument('--seed', type=int, default=42, help='')
+    parser.add_argument('--single'    , action='store_true', help='Run in single GPU')
+    parser.add_argument('--amp'       , action='store_true', help='Use automatic mixed precision')
+    parser.add_argument('--debug'     , action='store_true', help='Run in debug mode')
+    parser.add_argument('--clean'     , action='store_true', help='Clear workspace if already exist')
+    parser.add_argument('--overwrite' , action='store_true', help='Overwrite workspace')
+    parser.add_argument('-q','--quiet', action='store_true', help='Surpress standart output')
+    # Arguments for DDP
+    parser.add_argument('--distributed', action='store_true', help='Enable distributed data parallel')
+    parser.add_argument('--master', type=str, default='localhost', help='[DDP] IP address or name of a master node (default: "localhost")')
+    parser.add_argument('--node'  , type=str, default='1/1'      , help='[DDP] Specify node index and total number of nodes in the form of "{Node_Index}/{Total_Number_of_Nodes}" (e.g. 1/2, 2/2).\
+                                                                        Master node must have node index = 1.\
+                                                                        Specify "1/1" for single node DDP (default)')
+    args = parser.parse_args()
     args.name = args.config.split('/')[-1].replace('.py', '')
 
     if args.distributed:

@@ -28,13 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dpath', type=str, help='')
-    parser.add_argument('dpath_out', type=str, help='')
-    args = parser.parse_args()
-
+import argparse
 import numpy as np
 import numpy.lib.recfunctions as rfn
 
@@ -66,17 +60,20 @@ def main(args):
         _w = _x2 - _x1
         _h = _y2 - _y1
 
+        boxes['x'], boxes['y'], boxes['w'], boxes['h'] = _x1, _y1, _w, _h
         invalid = (_w <= 0) | (_h <= 0) | (_w == WIDTH) | (_h == HEIGHT)
 
         n1 = invalid.sum()
         total_invalid += n1
         total_boxes += len(boxes)
 
-        boxes = rfn.append_fields(boxes, 'invalid', invalid, usemask=False)
-
-        fname = fpath.split('/')[-1]
-        fpath_out = f'{args.dpath_out}/{fname}'
-        np.save(fpath_out, boxes)
+        if 'invalid' in boxes.dtype.names:
+            assert np.sum(boxes['invalid'] != invalid)==0
+        else:
+            boxes = rfn.append_fields(boxes, 'invalid', invalid, usemask=False)
+            fname = fpath.split('/')[-1]
+            fpath_out = f'{args.dpath_out}/{fname}'
+            np.save(fpath_out, boxes)
 
     p = total_invalid / total_boxes * 100
     print('')
@@ -86,5 +83,9 @@ def main(args):
     print('')
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    args = parser.parse_args()
     main(args)
 

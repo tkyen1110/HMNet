@@ -47,17 +47,17 @@ class HMNet(BlockBase):
     def __init__(self, latent_sizes, latent_dims, output_dims, num_heads, depth, warmup=20,
                  cfg_embed=None, cfg_memory1=None, cfg_memory2=None, cfg_memory3=None) -> None:
         super().__init__()
-        self.latent_dims = latent_dims
-        self.output_dims = output_dims
-        self.latent_sizes = latent_sizes
+        self.latent_dims = latent_dims   # [128, 256, 256]
+        self.output_dims = output_dims   # [256, 256, 256]
+        self.latent_sizes = latent_sizes # [(60, 76), (30, 38), (15, 19)]
         self.warmup = warmup    # output is valid after the warmup time steps
 
-        D0 = sum(cfg_embed['out_dim'])
-        D1, D2, D3 = latent_dims
-        O1, O2, O3 = output_dims
-        L1, L2, L3 = latent_sizes
-        H1, H2, H3 = num_heads
-        N1, N2, N3 = depth
+        D0 = sum(cfg_embed['out_dim']) # sum([32, 32, 32]) = 96
+        D1, D2, D3 = latent_dims       # [128, 256, 256]
+        O1, O2, O3 = output_dims       # [256, 256, 256]
+        L1, L2, L3 = latent_sizes      # [(60, 76), (30, 38), (15, 19)]
+        H1, H2, H3 = num_heads         # [4, 8,  8]
+        N1, N2, N3 = depth             # [1, 3,  9]
 
         self.memory1 = LatentMemory(latent_size=L1, input_dim=D0, latent_dim=D1, output_dim=O1, num_heads=H1, update_depth=N1, message_gen=False, event_write=True,  top_down=True,  **cfg_memory1, cfg_embed=cfg_embed)
         self.memory2 = LatentMemory(latent_size=L2, input_dim=D1, latent_dim=D2, output_dim=O2, num_heads=H2, update_depth=N2, message_gen=True,  event_write=False, top_down=True,  **cfg_memory2)
@@ -102,6 +102,9 @@ class HMNet(BlockBase):
         self.memory3.prepair_for_inference(batch_size, device=d2, input_dim=memory2_dim, input_size=memory2_size, image_size=image_size)
 
     def forward(self, list_events, list_image_metas, gather_indices, list_images=None, init_states=True, detach=True, fast_training=True):
+        # list_events       (list of list) = [Ts, B] = [40, 8]
+        # list_image_metas  (list of list) = [Ts, B] = [40, 8]
+        # list_images = None
         if list_images is None:
             list_images = [None] * len(list_events)
 
@@ -122,11 +125,67 @@ class HMNet(BlockBase):
         if fast_training:
             # extract key value in advance for fast trainig
             list_events = self.memory1.embed.forward_fast_train(self.memory1, list_events, list_image_metas)
-
+            # list_events (list of list) = [Ts, 3]
+        '''
+        out1_old, out2_old, out3_old = None, None, None
+        out1_equal, out2_equal, out3_equal = False, False, False
+        '''
         for time_idx, (events, images, image_metas) in enumerate(zip(list_events, list_images, list_image_metas)):
             # forward one time step
             out1, out2, out3 = self._forward_one_step(events, image_metas, image_input=images, fast_training=fast_training)
+            # out1.shape = torch.Size([B=7, 256, 60, 76])
+            # out2.shape = torch.Size([B=7, 256, 30, 38])
+            # out3.shape = torch.Size([B=7, 256, 15, 19])
+            # time_idx =  0, out1 = new, out2 = None, out3 = None
+            # time_idx =  1, out1 = new, out2 = None, out3 = None
+            # time_idx =  2, out1 = new, out2 = None, out3 = None
+            # time_idx =  3, out1 = new, out2 =  new, out3 = None
+            # time_idx =  4, out1 = new, out2 =  old, out3 = None
+            # time_idx =  5, out1 = new, out2 =  old, out3 = None
+            # time_idx =  6, out1 = new, out2 =  new, out3 = None
+            # time_idx =  7, out1 = new, out2 =  old, out3 = None
+            # time_idx =  8, out1 = new, out2 =  old, out3 = None
+            # time_idx =  9, out1 = new, out2 =  new, out3 =  new
+            # time_idx = 10, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 11, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 12, out1 = new, out2 =  new, out3 =  old
+            # time_idx = 13, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 14, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 15, out1 = new, out2 =  new, out3 =  old
+            # time_idx = 16, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 17, out1 = new, out2 =  old, out3 =  old
+            # time_idx = 18, out1 = new, out2 =  new, out3 =  new
+            # time_idx = 19, out1 = new, out2 = None, out3 =  old
+            '''
+            if out1!=None:
+                out1_shape = out1.shape
+                if out1_old!=None:
+                    out1_equal = torch.equal(out1, out1_old)
+                out1_old = out1
+            else:
+                out1_shape = None
 
+            if out2!=None:
+                out2_shape = out2.shape
+                if out2_old!=None:
+                    out2_equal = torch.equal(out2, out2_old)
+                out2_old = out2
+            else:
+                out2_shape = None
+
+            if out3!=None:
+                out3_shape = out3.shape
+                if out3_old!=None:
+                    out3_equal = torch.equal(out3, out3_old)
+                out3_old = out3
+            else:
+                out3_shape = None
+            print(time_idx)
+            print(out1_shape, out1_equal)
+            print(out2_shape, out2_equal)
+            print(out3_shape, out3_equal)
+            print()
+            '''
             if out1 is None or out2 is None or out3 is None:
                 continue
 
@@ -151,8 +210,11 @@ class HMNet(BlockBase):
 
         # get current state
         z3, message3 = self.memory3.sync_and_get_state()
+        # z3.meta = {'shape': [B, H=15, W=19]} ; z3.data.shape = torch.Size([B, HxW=285 , latent_dim=256])
         z2, message2 = self.memory2.sync_and_get_state()
+        # z2.meta = {'shape': [B, H=30, W=38]} ; z2.data.shape = torch.Size([B, HxW=1140, latent_dim=256])
         z1, message1 = self.memory1.sync_and_get_state()
+        # z1.meta = {'shape': (B, H=60, W=76)} ; z1.data.shape = torch.Size([B, HxW=4560, latent_dim=128])
 
         # forward one time step
         out3 = self.memory3(z2, None, image_input=image_input)
