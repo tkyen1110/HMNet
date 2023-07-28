@@ -199,21 +199,21 @@ class TrainSettings(object):
             delta_t            = DELTA_T,        # 5e3   us
             skip_ts            = 0,
             use_nearest_label  = False,
-            sampling           = 'label',
+            sampling           = 'regular_batch',
             min_box_diag       = 30,
             min_box_side       = 10,
             random_time_scaling = False,
-            start_index_aug_method = 'end',
+            start_index_aug_method = 'none',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method = 'relative_time',
+            time_method = 'absolute_time',
         )
 
         return train_dataset
 
     loader_param = dict(
         batch_size  = 4,
-        shuffle     = True,
+        shuffle     = False,
         num_workers = 4,
         pin_memory  = True,
         drop_last   = True,

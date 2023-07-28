@@ -50,7 +50,7 @@ fi
 echo "=========================================="
 echo " Start preprocessing"
 echo "=========================================="
-Gen1_Automotive_dir="/home/tkyen/opencv_practice/data/Gen1_Automotive"
+Gen1_Automotive_dir="/home/tkyen/opencv_practice/data_1/Gen1_Automotive"
 train_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/train"
 val_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/val"
 test_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/test"

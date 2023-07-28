@@ -28,6 +28,8 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
+# CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
 import argparse
 import os
 import sys
@@ -79,6 +81,12 @@ def main(local_rank, args, dist_settings=None):
     config.device = torch.device("cuda:%d" % local_rank)
     torch.cuda.set_device(local_rank)
 
+    # set dataset
+    train_dataset = config.get_dataset(config.loader_param.batch_size)
+
+    # get dataloader
+    train_loader = get_dataloader(train_dataset, rank, world_size, config)
+
     # set model
     model = config.get_model()
     if config.distributed:
@@ -107,22 +115,13 @@ def main(local_rank, args, dist_settings=None):
         )
         model = nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], **settings)
 
-    # set dataset
-    train_dataset = config.get_dataset()
-
-    # get dataloader
-    train_loader = get_dataloader(train_dataset, rank, world_size, config)
-
     print_log('Configure done: N_GPUS=%d' % world_size, rank, config)
 
     start_epoch = getattr(config, 'start_epoch', 0)
     num_epochs = (config.maxiter - 1) // config.iter_per_epoch + 1
 
     # iter epochs
-    config.segment_duration = 200e3 #TODO
-    config.num_train_segments = 1   #TODO
     for epoch in range(start_epoch, num_epochs):
-
         train(epoch, train_loader, model, optimizer, scheduler, scaler, rank, config)
 
         # save
@@ -153,6 +152,16 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     for batch_idx, data in enumerate(loader):
         list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks = parse_event_data(data)
         # list_events (list of list) = [T, B] = [40, 8]
+
+        # print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
+        # init_states_bool = np.empty(len(list_events[0]), dtype=bool)
+        # for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
+        #     for i, image_meta in enumerate(image_metas):
+        #         init_states_bool[i] = image_meta['init_states']
+        #     assert init_states_bool.all() or np.logical_not(init_states_bool).all()
+        #     if init_states_bool.all():
+        #         print(batch_idx, count, init_states_bool.all())
+
         meter.record_data_time()
 
         segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
@@ -169,10 +178,17 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
             # clear grad
             optimizer.zero_grad(set_to_none=True)
 
+            init_states_bool = np.empty(len(image_metas[0]), dtype=bool)
+            for i, image_meta in enumerate(image_metas[0]):
+                init_states_bool[i] = image_meta['init_states']
+            assert init_states_bool.all() or np.logical_not(init_states_bool).all()
+            if init_states_bool.all():
+                print_log('Refresh memory: batch_idx = {}, seg_idx = {}'.format(batch_idx, seg_idx), rank, config)
+
             # forward
             if config.amp:
                 with autocast(enabled=True):
-                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=seg_idx==0)    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
                 meter.update(loss, loss_reports)
@@ -183,7 +199,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
                 if scaler.get_scale() >= scale_before_step:
                     scheduler.step(loader.nowiter)
             else:
-                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=seg_idx==0)    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
                 meter.update(loss, loss_reports)
@@ -426,6 +442,9 @@ def get_dataloader(dataset, rank, world_size, config, val=False):
         config.loader_param['drop_last'] = False
 
     if val == False:
+        config.iter_per_epoch = len(dataset.sampling_timings) // dataset.batch_size
+        config.maxiter = config.iter_per_epoch * config.NUM_EPOCHS
+        config.schedule[0]['range'] = (0, config.maxiter)
         loader = PseudoEpochLoader(dataset=dataset, sampler=sampler, **loader_param, iter_per_epoch=config.iter_per_epoch, start_epoch=config.start_epoch)
     else:
         loader = torch.utils.data.DataLoader(dataset, sampler=sampler, **loader_param)

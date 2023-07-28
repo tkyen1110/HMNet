@@ -84,26 +84,26 @@ class EventPacket(data.Dataset):
                  min_box_diag=30, min_box_side=10,
                  random_time_scaling=False, min_time_scale=0.5, max_time_scale=2.0,
                  event_transform=None, output_type=None,
-                 max_events_per_packet=-1, downsample_packet_length=None):
+                 max_events_per_packet=-1, downsample_packet_length=None, batch_size=1):
 
 
-        self.base_path = base_path
-        self.sampling = sampling
+        self.base_path = base_path                           # ''
+        self.sampling = sampling                             # 'label'
         self.ev_meta = pkl.load(open(fpath_meta, 'rb'))
         self.fpath_gt_duration = fpath_gt_duration
         self.event_transform = event_transform
-        self.output_type = output_type
-        self.max_events_per_packet = max_events_per_packet
-        self.downsample_packet_length = downsample_packet_length or train_duration
-        self.start_index_aug_method = start_index_aug_method
-        self.start_index_aug_ratio = start_index_aug_ratio
-        self.video_duration = int(video_duration) # 60e6  us
-        self.train_duration = int(train_duration) # 200e3 us
-        self.random_time_scaling = random_time_scaling
-        self.min_time_scale = min_time_scale
-        self.max_time_scale = max_time_scale
-        self.min_box_diag = min_box_diag
-        self.min_box_side = min_box_side
+        self.output_type = output_type                       # None
+        self.max_events_per_packet = max_events_per_packet   # -1
+        self.downsample_packet_length = downsample_packet_length or train_duration # 200e3
+        self.start_index_aug_method = start_index_aug_method # 'end'
+        self.start_index_aug_ratio = start_index_aug_ratio   # 0.25
+        self.video_duration = int(video_duration)            # 60e6  us
+        self.train_duration = int(train_duration)            # 200e3 us
+        self.random_time_scaling = random_time_scaling       # False
+        self.min_time_scale = min_time_scale                 # 0.5
+        self.max_time_scale = max_time_scale                 # 2.0
+        self.min_box_diag = min_box_diag                     # 30
+        self.min_box_side = min_box_side                     # 10
 
         self.list_fpath_evt = get_list(fpath_evt_lst, ext=None)
         self.list_fpath_lbl = get_list(fpath_lbl_lst, ext=None)
@@ -119,13 +119,19 @@ class EventPacket(data.Dataset):
             for ifile, fname_lbl in enumerate(self.list_fpath_lbl):
                 seg_indices = np.unique(np.load(self._get_path(fname_lbl))['t'] // 1000).tolist()
                 self.sampling_timings += [ (ifile, seg_index) for seg_index in seg_indices ]
-        elif sampling == 'regular':
+        elif sampling == 'regular' or sampling == 'regular_batch':
             self.sampling_timings = []
             sampling_stride = sampling_stride if sampling_stride > 0 else train_duration
-            seg_stride = int(sampling_stride // 1000)
-            seg_duration = int(self.video_duration // 1000)
+            seg_stride = int(sampling_stride // 1000)       # 200 ms
+            seg_duration = int(self.video_duration // 1000) # 60000 ms
             for ifile in range(len(self.list_fpath_evt)):
                 self.sampling_timings += [ (ifile, seg_index) for seg_index in range(0,seg_duration,seg_stride) ]
+
+            if sampling == 'regular_batch' and len(self.list_fpath_evt) % batch_size != 0:
+                append_num = batch_size - len(self.list_fpath_evt) % batch_size
+                append_ifiles = np.random.randint(len(self.list_fpath_evt), size=append_num)
+                for ifile in append_ifiles:
+                    self.sampling_timings += [ (ifile, seg_index) for seg_index in range(0,seg_duration,seg_stride) ]
 
         self._image_meta = {
             'width': WIDTH,
@@ -148,7 +154,7 @@ class EventPacket(data.Dataset):
         bbox_dict.pop('times')
         return event_dict, bbox_dict, meta_data
 
-    def getdata(self, index, keep_latest_labels=True, skip_ts=0):
+    def getdata(self, index, keep_latest_labels=True, skip_ts=0, time_method='relative_time'):
         if self.random_time_scaling:
             time_scaling = random.uniform(self.min_time_scale, self.max_time_scale)
         else:
@@ -168,14 +174,19 @@ class EventPacket(data.Dataset):
         if skip_ts > 0:
             labels = self._filter_early_bboxes(labels, base_time, skip_ts)
 
-        events, labels = self._bind(events, labels, base_time)
+        events, labels = self._bind(events, labels, base_time, time_method)
 
         if self.max_events_per_packet > 0:
             events = self._event_downsample(events, self.max_events_per_packet, self.downsample_packet_length)
 
         event_dict = { 'events': torch.from_numpy(events) }
         bbox_dict = self._labels2bboxdict(labels)
-
+        # bbox_dict = {
+        #     'times': torch.from_numpy(gt_times),
+        #     'bboxes': torch.from_numpy(gt_bboxes),
+        #     'labels': torch.from_numpy(gt_labels),
+        #     'ignore_mask': torch.from_numpy(ignore_mask).bool(),
+        # }
         if self.event_transform is not None:
             event_dict, bbox_dict, image_meta = self.event_transform(event_dict, bbox_dict, image_meta, types=['event', 'bbox', 'meta']) # TODO: to read
 
@@ -265,9 +276,9 @@ class EventPacket(data.Dataset):
         if self.sampling == 'random':
             ifile = random.randint(0, len(self.list_fpath_evt)-1)
             seg_index = random.randint(0, nseg_per_video - nseg_per_packet)
-        elif self.sampling in ('file', 'label', 'regular'):
+        elif self.sampling in ('file', 'label', 'regular', 'regular_batch'):
             ifile, seg_index = self.sampling_timings[index]
-
+        # print(ifile, seg_index)
         seg_index, is_success = self._augment_index(seg_index, self.start_index_aug_method, self.start_index_aug_ratio, nseg_per_packet, nseg_per_video)
         if not is_success and self.sampling == 'file':
             # retry with other index
@@ -291,7 +302,7 @@ class EventPacket(data.Dataset):
 
         return fpath_evt, fpath_lbl, time, ev_range, gt_duration
 
-    def _update_image_meta(self, image_meta, fpath_evt, curr_time_org, curr_time_crop, delta_t, time_scaling):
+    def _update_image_meta(self, image_meta, fpath_evt, curr_time_org, curr_time_crop, delta_t, time_scaling, init_states=False):
         image_meta = image_meta.copy()
         image_meta['filename'] = fpath_evt
         image_meta['ori_filename'] = fpath_evt.split('/')[-1]
@@ -300,6 +311,7 @@ class EventPacket(data.Dataset):
         image_meta['delta_t'] = delta_t
         image_meta['stride_t'] = delta_t
         image_meta['time_scaling'] = time_scaling
+        image_meta['init_states'] = init_states
         return image_meta
 
     def _keep_latest_labels(self, labels):
@@ -379,11 +391,12 @@ class EventPacket(data.Dataset):
         bbox_dict['ignore_mask'] = bbox_dict['ignore_mask'][mask]
         return bbox_dict
 
-    def _bind(self, events, labels, base_time):
+    def _bind(self, events, labels, base_time, time_method):
         t_evt, x_evt, y_evt, p_evt = events['t'], events['x'], events['y'], events['p']
         t_lbl, x_lbl, y_lbl, w_lbl, h_lbl, c_lbl = labels['t'], labels['x'], labels['y'], labels['w'], labels['h'], labels['class_id']
-        t_evt = t_evt - base_time
-        t_lbl = t_lbl - base_time
+        if time_method == 'relative_time':
+            t_evt = t_evt - base_time
+            t_lbl = t_lbl - base_time
         base_time = 0
         events = np.stack([t_evt, x_evt, y_evt, p_evt], axis=-1).astype(np.int)
         labels = np.stack([t_lbl, x_lbl, y_lbl, w_lbl, h_lbl, c_lbl], axis=-1).astype(np.int)
@@ -405,7 +418,7 @@ class EventPacket(data.Dataset):
             for lbl, fidx in zip(label_splits, frame_indices):
                 labels_dict[fidx] = lbl
 
-            times_for_dummy_gt_frames = ((np.arange(num_gt_frames) - frame_indices[0]) * gt_duration + times_lbl[0]).astype(np.int)
+            times_for_dummy_gt_frames = ((np.arange(num_gt_frames) - frame_indices[0]) * gt_duration + times_lbl[0]).astype(np.int) # TODO
             mask = np.logical_and(times_for_dummy_gt_frames >= 0, times_for_dummy_gt_frames < train_duration)
         else:
             times_for_dummy_gt_frames = (np.arange(num_gt_frames) * gt_duration).astype(np.int)
@@ -511,15 +524,63 @@ class EventFrame(EventPacket):
 #     event_transform    = train_transform,
 # )
 class EventPacketStream(EventPacket):
-    def __init__(self, *args, skip_ts=0, delta_t=1000, stream_stride=None, use_nearest_label=False, **kwargs):
+    def __init__(self, *args, skip_ts=0, delta_t=1000, stream_stride=None, use_nearest_label=False,
+                 time_method='relative_time', **kwargs):
         super().__init__(*args, **kwargs)
-        self.delta_t = delta_t
-        self.stride_t = stream_stride or delta_t
-        self.skip_ts = skip_ts
-        self.use_nearest_label = use_nearest_label
+        self.delta_t = delta_t                         # 5e3
+        self.stride_t = stream_stride or delta_t       # 5e3
+        self.skip_ts = skip_ts                         # 0
+        self.use_nearest_label = use_nearest_label     # False
+        self.time_method = time_method                 # 'relative_time' or 'absolute_time'
+
+        self.sampling = kwargs['sampling']
+        self.video_duration = kwargs['video_duration'] # 60e6 us
+        self.train_duration = kwargs['train_duration'] # 200e3 us
+        self.batch_size = kwargs['batch_size']
+
+        if self.time_method == 'absolute_time':
+            self.init_states = False
+        else:
+            self.init_states = True
 
     def __getitem__(self, index):
-        event_dict, bbox_dict, meta_data = self.getdata(index, keep_latest_labels=False, skip_ts=self.skip_ts)
+        if self.sampling == 'regular_batch':
+            num_frames     = int(self.video_duration / self.train_duration)
+            batch_index    = index // (self.batch_size * num_frames)
+            batch_residual = index  % (self.batch_size * num_frames)
+            seg_index =  batch_residual % self.batch_size
+            time_index = (batch_residual - seg_index) // self.batch_size
+            new_index = batch_index * (self.batch_size * num_frames) + seg_index * num_frames + time_index
+            event_dict, bbox_dict, meta_data = self.getdata(new_index, keep_latest_labels=False, skip_ts=self.skip_ts,
+                                                            time_method = self.time_method)
+            if time_index == 0:
+                self.init_states = True
+            else:
+                self.init_states = False
+        else:
+            event_dict, bbox_dict, meta_data = self.getdata(index, keep_latest_labels=False, skip_ts=self.skip_ts,
+                                                            time_method = self.time_method)
+        # event_dict = { 'events': torch.from_numpy(events) }
+        # bbox_dict = {
+        #     'times': torch.from_numpy(gt_times),
+        #     'bboxes': torch.from_numpy(gt_bboxes),
+        #     'labels': torch.from_numpy(gt_labels),
+        #     'ignore_mask': torch.from_numpy(ignore_mask).bool(),
+        # }
+        # meta_data = { 
+        #    'image_meta': {
+        #                    'width': WIDTH,
+        #                    'height': HEIGHT,
+        #                    'filename'
+        #                    'ori_filename'
+        #                    'curr_time_org'
+        #                    'curr_time_crop'
+        #                    'delta_t'
+        #                    'stride_t'
+        #                    'time_scaling'
+        #                  },
+        #     'label_meta': dict(ignore_index=IGNORE_LABEL_IDX),
+        # }
 
         events       = event_dict['events'].numpy()
         labels       = self._bboxdict2labels(bbox_dict)
@@ -548,12 +609,16 @@ class EventPacketStream(EventPacket):
 
         backet_evt = DataBacket(num=num_frames)
         for event_data, seg_idx in zip(event_splits, segment_indices_evt):
+            if self.time_method == 'absolute_time':
+                seg_idx = seg_idx % num_frames
             if seg_idx < 0 or seg_idx >= num_frames:
                 continue
             backet_evt.append(seg_idx, event_data)
 
         backet_lbl = DataBacket(num=num_frames)
         for label_data, seg_idx in zip(label_splits, segment_indices_lbl):
+            if self.time_method == 'absolute_time':
+                seg_idx = seg_idx % num_frames
             backet_lbl.append(seg_idx, label_data)
 
         if self.use_nearest_label:
@@ -565,7 +630,8 @@ class EventPacketStream(EventPacket):
         for i in range(len(backet_evt)):
             curr_time_org = (image_meta['curr_time_org'] - image_meta['curr_time_crop']) + stride_t * (i + 1)
             curr_time_crop = stride_t * (i + 1)
-            image_meta = self._update_image_meta(image_meta, fpath_evt, curr_time_org, curr_time_crop, stride_t, time_scaling)
+            image_meta = self._update_image_meta(image_meta, fpath_evt, curr_time_org, curr_time_crop, 
+                                                 stride_t, time_scaling, self.init_states and i==0)
             meta = {
                 'image_meta': image_meta,
                 'label_meta': label_meta,
@@ -584,7 +650,26 @@ class EventPacketStream(EventPacket):
 
         assert len(data_streams) == len(target_streams)
         assert len(data_streams) == len(meta_streams)
-
+        # data_streams = [ { 'events': torch.from_numpy(events) }, {...}, {...}, ...]
+        # target_streams = [ { 'bboxes': torch.from_numpy(gt_bboxes),
+        #                      'labels': torch.from_numpy(gt_labels),
+        #                      'ignore_mask': torch.from_numpy(ignore_mask).bool() },
+        #                    {...},
+        #                    {...},...
+        #                  ]
+        # meta_streams = [ { 'image_meta': { 'width': WIDTH,
+        #                                    'height': HEIGHT,
+        #                                    'filename'
+        #                                    'ori_filename'
+        #                                    'curr_time_org'
+        #                                    'curr_time_crop'
+        #                                    'delta_t'
+        #                                    'stride_t'
+        #                                    'time_scaling'},
+        #                    'label_meta': dict(ignore_index=IGNORE_LABEL_IDX) },
+        #                  {...},
+        #                  {...},...
+        #                ]
         return data_streams, target_streams, meta_streams
 
     def merge_streams(self, event_streams, label_streams, meta_streams, delta_t, stride_t):
