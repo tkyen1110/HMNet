@@ -93,8 +93,8 @@ class HMNet(BlockBase):
         self.memory3.cuda_stream_priority = p3
 
     def prepair_for_inference(self, batch_size, image_size=None):
-        memory1_dim, memory2_dim, memory3_dim = self.latent_dims
-        memory1_size, memory2_size, memory3_size = self.latent_sizes
+        memory1_dim, memory2_dim, memory3_dim = self.latent_dims     # [128, 256, 256]
+        memory1_size, memory2_size, memory3_size = self.latent_sizes # [(60, 76), (30, 38), (15, 19)]
         d0, d1, d2 = self.devices
 
         self.memory1.prepair_for_inference(batch_size, device=d0)

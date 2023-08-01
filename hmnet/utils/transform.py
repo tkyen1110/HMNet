@@ -222,6 +222,7 @@ class Compose(TransformBase):
         self._input_check(datas, types, need_image_size=True)
 
         datas, is_nps = self.to_input(datas)
+        # events, metas = datas
 
         if repeat and len(self.forward_params) > 0:
             return self.replay(*datas, types=types)

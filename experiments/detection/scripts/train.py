@@ -28,8 +28,6 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
-# CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
 import argparse
 import os
 import sys
@@ -167,10 +165,10 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
         segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
         seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks = \
                 split_into_segments(list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, segment_duration=segment_duration, num_train_segments=config.num_train_segments)
-        # seg_events (list of list) = [SegNum, Ts, B] = [1, 40, 8] where SegNum * Ts = T
+        # seg_events (list of list) = [num_train_segments, Ts, B] = [2, 20, 4] where num_train_segments * Ts = T
 
         for seg_idx, (events, image_metas, gt_bboxes, gt_labels, ignore_masks) in enumerate(zip(seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks)):
-            events = to_device(events, config.device) # events (list of list) = [Ts, B] = [40, 8]
+            events = to_device(events, config.device) # events (list of list) = [Ts, B] = [20, 4]
             gt_bboxes = to_device(gt_bboxes, config.device)
             gt_labels = to_device(gt_labels, config.device)
             ignore_masks = to_device(ignore_masks, config.device)
@@ -632,6 +630,8 @@ def parse_event_data(inputs):
         return events, image_metas, gt_bboxes, gt_labels, ignore_masks
 
 if __name__ == '__main__':
+    # CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
+    # CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
     __spec__ = None
 
     parser = argparse.ArgumentParser()

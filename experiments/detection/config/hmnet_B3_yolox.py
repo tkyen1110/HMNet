@@ -193,10 +193,10 @@ class TrainSettings(object):
             base_path          = '',
             fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
             fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
-            batch_size         = batch_size,
+            batch_size         = batch_size,      # TODO
             video_duration     = 60e6,
-            train_duration     = TRAIN_DURATION, # 200e3 us
-            delta_t            = DELTA_T,        # 5e3   us
+            train_duration     = TRAIN_DURATION,  # 200e3 us
+            delta_t            = DELTA_T,         # 5e3   us
             skip_ts            = 0,
             use_nearest_label  = False,
             sampling           = 'label',
@@ -206,7 +206,7 @@ class TrainSettings(object):
             start_index_aug_method = 'end',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method = 'relative_time',
+            time_method        = 'relative_time', # TODO
         )
 
         return train_dataset
@@ -284,15 +284,16 @@ class TestSettings(object):
 
         return model
 
-    def get_dataset(self, fpath_evt, fpath_lbl, fpath_meta, fpath_gt_duration, base_path, fast_mode=False, delta_t=None):
+    def get_dataset(self, fpath_evt, fpath_lbl, fpath_meta, fpath_gt_duration, base_path, fast_mode=False, delta_t=None, batch_size=1):
         delta_t = delta_t or DELTA_T
 
         test_dataset = EventPacketStream(
             fpath_evt_lst      = [fpath_evt],
             fpath_lbl_lst      = [fpath_lbl],
-            base_path          = base_path,
+            base_path          = '',
             fpath_meta         = fpath_meta,
             fpath_gt_duration  = fpath_gt_duration,
+            batch_size         = batch_size,       # TODO
             video_duration     = 60e6,
             train_duration     = 60e6,
             sampling_stride    = 60e6,
@@ -300,18 +301,19 @@ class TestSettings(object):
             skip_ts            = 0,
             use_nearest_label  = False,
             sampling           = 'regular',
-            start_index_aug_method = 'none',
             min_box_diag       = 30,
             min_box_side       = 10,
             random_time_scaling = False,
+            start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
+            time_method         = 'relative_time', # TODO
         )
 
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint.pth.tar'
+    checkpoint      = 'checkpoint_9.pth.tar'
     batch_size      = 1
 
 

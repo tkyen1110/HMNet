@@ -63,7 +63,7 @@ def evaluate_folders(dt_folder, gt_lst, camera):
 
     gt_boxes_list = map(filter_boxes_fn, gt_boxes_list)
     result_boxes_list = map(filter_boxes_fn, result_boxes_list)
-    evaluate_detection(gt_boxes_list, result_boxes_list, **eval_conf)
+    evaluate_detection(gt_boxes_list, result_boxes_list, **eval_conf) # TODO: to read
 
 def main():
     parser = argparse.ArgumentParser(prog='psee_evaluator.py')
