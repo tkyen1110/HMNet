@@ -93,11 +93,11 @@ class HMDet(BlockBase):
         self.bbox_head = self.bbox_head.compile(backend, fp16, input_shapes)
 
     def forward(self, list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, init_states=True) -> Tensor:
-        # list_events       (list of list) = [Ts, B] = [40, 8]
-        # list_image_metas  (list of list) = [Ts, B] = [40, 8]
-        # list_gt_bboxes    (list of list) = [Ts, B] = [40, 8]
-        # list_gt_labels    (list of list) = [Ts, B] = [40, 8]
-        # list_ignore_masks (list of list) = [Ts, B] = [40, 8]
+        # list_image_metas  (list of list) = [Ts, B] = [20, 4]
+        # list_gt_bboxes    (list of list) = [Ts, B] = [20, 4]
+        # list_events       (list of list) = [Ts, B] = [20, 4]
+        # list_gt_labels    (list of list) = [Ts, B] = [20, 4]
+        # list_ignore_masks (list of list) = [Ts, B] = [20, 4]
         if init_states:
             self.idx_offset = 0
 

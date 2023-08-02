@@ -194,6 +194,21 @@ class BBoxHead(BlockBase):
 
         return self
 
+'''
+head = dict(
+    type = 'YOLOXHead',
+    num_classes = 2,
+    strides     = [4, 8, 16],
+    in_channels = [256, 256, 256],
+    stacked_convs = 2,
+    feat_channels = 256,
+    depthwise   = False,
+    act         = "silu",
+    score_thr   = 0.01,
+    nms_iou_threshold = 0.65,
+    ignore_bboxes_as_negative = True,
+)
+'''
 class YOLOXHead(BlockBase):
     def __init__(
         self,

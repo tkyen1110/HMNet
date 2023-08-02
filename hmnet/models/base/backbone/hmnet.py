@@ -102,8 +102,8 @@ class HMNet(BlockBase):
         self.memory3.prepair_for_inference(batch_size, device=d2, input_dim=memory2_dim, input_size=memory2_size, image_size=image_size)
 
     def forward(self, list_events, list_image_metas, gather_indices, list_images=None, init_states=True, detach=True, fast_training=True):
-        # list_events       (list of list) = [Ts, B] = [40, 8]
-        # list_image_metas  (list of list) = [Ts, B] = [40, 8]
+        # list_events       (list of list) = [Ts, B] = [20, 4]
+        # list_image_metas  (list of list) = [Ts, B] = [20, 4]
         # list_images = None
         if list_images is None:
             list_images = [None] * len(list_events)

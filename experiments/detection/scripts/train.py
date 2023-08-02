@@ -148,18 +148,25 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     meter.timer_start()
 
     for batch_idx, data in enumerate(loader):
+        '''
+        data_streams, target_streams, meta_streams = data
+        len(data_streams)   = T = 40 ; len(data_streams[0])   = B = 4
+        len(target_streams) = T = 40 ; len(target_streams[0]) = B = 4
+        len(meta_streams)   = T = 40 ; len(meta_streams[0])   = B = 4
+        '''
         list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks = parse_event_data(data)
-        # list_events (list of list) = [T, B] = [40, 8]
+        # len(list_events) = T ; len(list_events[0]) = B
 
-        # print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
-        # init_states_bool = np.empty(len(list_events[0]), dtype=bool)
-        # for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
-        #     for i, image_meta in enumerate(image_metas):
-        #         init_states_bool[i] = image_meta['init_states']
-        #     assert init_states_bool.all() or np.logical_not(init_states_bool).all()
-        #     if init_states_bool.all():
-        #         print(batch_idx, count, init_states_bool.all())
-
+        '''
+        print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
+        init_states_bool = np.empty(len(list_events[0]), dtype=bool)
+        for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
+            for i, image_meta in enumerate(image_metas):
+                init_states_bool[i] = image_meta['init_states']
+            assert init_states_bool.all() or np.logical_not(init_states_bool).all()
+            if init_states_bool.all():
+                print(batch_idx, count, init_states_bool.all())
+        '''
         meter.record_data_time()
 
         segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
@@ -169,9 +176,9 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
 
         for seg_idx, (events, image_metas, gt_bboxes, gt_labels, ignore_masks) in enumerate(zip(seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks)):
             events = to_device(events, config.device) # events (list of list) = [Ts, B] = [20, 4]
-            gt_bboxes = to_device(gt_bboxes, config.device)
-            gt_labels = to_device(gt_labels, config.device)
-            ignore_masks = to_device(ignore_masks, config.device)
+            gt_bboxes = to_device(gt_bboxes, config.device, empty_none=True)
+            gt_labels = to_device(gt_labels, config.device, empty_none=True)
+            ignore_masks = to_device(ignore_masks, config.device, empty_none=True)
 
             # clear grad
             optimizer.zero_grad(set_to_none=True)
@@ -200,10 +207,13 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
                 outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
-                meter.update(loss, loss_reports)
-                loss.backward()
-                optimizer.step()
-                scheduler.step(loader.nowiter)
+                if loss > 0:
+                    meter.update(loss, loss_reports)
+                    loss.backward()
+                    optimizer.step()
+                    scheduler.step(loader.nowiter)
+                else:
+                    continue
 
         # measure elapsed time
         meter.record_batch_time()
@@ -449,13 +459,16 @@ def get_dataloader(dataset, rank, world_size, config, val=False):
 
     return loader
 
-def to_device(data, device, non_blocking=True):
+def to_device(data, device, non_blocking=True, empty_none=False):
     if data is None:
         return data
     elif isinstance(data, (list, tuple)):
         return [ to_device(d, device, non_blocking) for d in data ]
     elif isinstance(data, torch.Tensor):
-        return data.to(device, non_blocking=non_blocking)
+        if empty_none and len(data)==0:
+            data = None
+        else:
+            return data.to(device, non_blocking=non_blocking)
     else:
         return data
 
