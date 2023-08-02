@@ -136,7 +136,7 @@ def main(config):
 
         results = rfn.stack_arrays(results, usemask=False)
         print(f'\nwriting results')
-        np.save(f"{config.dpath_out}/{fpath_evt.split('/')[-1]}", results)
+        np.save(f"{config.dpath_out}/{fpath_evt.split('/')[-1].replace('_td', '_bbox')}", results)
 
 
 def backward_transform(list_bbox_dict, img_metas, transform):
@@ -244,13 +244,15 @@ def get_dirname(path):
     return path.split('/')[-1].split('.')[0]
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox.py \
-    #   /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
-    #   /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
+    '''
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
 
-    # CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch.py \
-    #   /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
-    #   /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
+    '''
     __spec__ = None
 
     parser = argparse.ArgumentParser()

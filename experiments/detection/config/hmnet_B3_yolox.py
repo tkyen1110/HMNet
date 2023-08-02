@@ -313,7 +313,7 @@ class TestSettings(object):
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_9.pth.tar'
+    checkpoint      = 'checkpoint_10.pth.tar'
     batch_size      = 1
 
 

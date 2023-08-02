@@ -37,7 +37,7 @@ fi
 NAME=${1##*/}
 NAME=${NAME%.py}
 
-dir=$(ls -d ./workspace/${NAME}/result/pred_test/)
+dir=$(ls -d ./workspace/${NAME}/result/pred_test)
 out=${dir}/logs
 mkdir -p ${out}
-python ./scripts/psee_evaluator.py ./data/gen1/test_lbl/ ${dir} --camera GEN1 > ${out}/result.txt
+python ./scripts/psee_evaluator.py /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl/ ${dir} --camera GEN1 > ${out}/result.txt
