@@ -231,10 +231,15 @@ def get_config(args):
     config.speed_test = args.speed_test
     config.mode = args.mode
 
+    if config.pretrained is None:
+        batch_num = config.checkpoint.split('.')[0].split('_')[1]
+    else:
+        batch_num = os.path.basename(config.pretrained).split('.')[0].split('_')[1]
+
     name = args.config.split('/')[-1].replace('.py', '')
     dirname = get_dirname(args.data_list)
     config.dpath_work = f'./workspace/{name}'
-    config.dpath_out = f'./workspace/{name}/result/pred_{dirname}'
+    config.dpath_out = f'./workspace/{name}/result/pred_{dirname}_{batch_num}'
 
     return config
 
