@@ -233,10 +233,15 @@ def get_config(args):
     config.speed_test = args.speed_test
     config.mode = args.mode
 
+    if config.pretrained is None:
+        batch_num = config.checkpoint.split('.')[0].split('_')[1]
+    else:
+        batch_num = os.path.basename(config.pretrained).split('.')[0].split('_')[1]
+
     name = args.config.split('/')[-1].replace('.py', '')
     dirname = get_dirname(args.data_list)
     config.dpath_work = f'./workspace/{name}'
-    config.dpath_out = f'./workspace/{name}/result/pred_{dirname}'
+    config.dpath_out = f'./workspace/{name}/result/pred_{dirname}_{batch_num}'
 
     return config
 
@@ -247,6 +252,14 @@ def get_dirname(path):
 
 if __name__ == '__main__':
     '''
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
+
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
+
     CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet \

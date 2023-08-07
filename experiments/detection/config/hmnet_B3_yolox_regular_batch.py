@@ -28,7 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os, sys
+import sys, os
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lrsch
@@ -51,7 +51,7 @@ backbone = dict(
     output_dims  = [256, 256, 256],
     num_heads    = [4, 8,  8],
     depth        = [1, 3,  9],
-    warmup       = 0, # TK
+    warmup       = 0, # TODO
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -193,35 +193,35 @@ class TrainSettings(object):
             base_path          = '',
             fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
             fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
-            batch_size         = batch_size,      # TK
+            batch_size         = batch_size,      # TODO
             video_duration     = 60e6,
             train_duration     = TRAIN_DURATION,  # 200e3 us
             delta_t            = DELTA_T,         # 5e3   us
             skip_ts            = 0,
             use_nearest_label  = False,
-            sampling           = 'label',
+            sampling           = 'regular_batch',
             min_box_diag       = 30,
             min_box_side       = 10,
             random_time_scaling = False,
-            start_index_aug_method = 'end',
+            start_index_aug_method = 'none',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method        = 'relative_time', # TK
+            time_method        = 'relative_time', # TODO
         )
 
         return train_dataset
 
     loader_param = dict(
-        batch_size  = 16,
-        shuffle     = True,
-        num_workers = 4,
+        batch_size  = 2,
+        shuffle     = False,
+        num_workers = 2,
         pin_memory  = True,
         drop_last   = True,
         collate_fn  = collate_keep_dict,
     )
 
     # segment_duration x num_train_segments = train_duration
-    segment_duration =  50e3 #TODO
+    segment_duration = 50e3  #TODO
     num_train_segments = 4   #TODO
 
     # ======== model settings ========
@@ -258,7 +258,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = ''
+    resume      = 'checkpoint_10.pth.tar'
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -293,7 +293,7 @@ class TestSettings(object):
             base_path          = '',
             fpath_meta         = fpath_meta,
             fpath_gt_duration  = fpath_gt_duration,
-            batch_size         = batch_size,       # TK
+            batch_size         = batch_size,       # TODO
             video_duration     = 60e6,
             train_duration     = 60e6,
             sampling_stride    = 60e6,
@@ -313,7 +313,7 @@ class TestSettings(object):
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = ''
+    checkpoint      = 'checkpoint_10.pth.tar'
     batch_size      = 1
 
 

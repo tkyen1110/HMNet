@@ -215,9 +215,9 @@ class TrainSettings(object):
     num_train_segments = N_SEGMENTS
 
     loader_param = dict(
-        batch_size  = 16,
+        batch_size  = 1,
         shuffle     = True,
-        num_workers = 4,
+        num_workers = 1,
         pin_memory  = True,
         drop_last   = True,
         collate_fn  = collate_keep_dict,
@@ -259,7 +259,7 @@ class TrainSettings(object):
     # ======== other settings ========
     resume      = ''
     print_freq  = 1
-    load        = './workspace/hmnet_B3_yolox/checkpoint.pth.tar'
+    load        = './pretrained/gen1_hmnet_B3_tbptt.pth'
     fpath_script= sys.argv[0]
 
 
