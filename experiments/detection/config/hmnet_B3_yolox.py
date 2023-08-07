@@ -212,17 +212,17 @@ class TrainSettings(object):
         return train_dataset
 
     loader_param = dict(
-        batch_size  = 4,
+        batch_size  = 2,
         shuffle     = True,
-        num_workers = 4,
+        num_workers = 2,
         pin_memory  = True,
         drop_last   = True,
         collate_fn  = collate_keep_dict,
     )
 
     # segment_duration x num_train_segments = train_duration
-    segment_duration = 100e3 #TODO
-    num_train_segments = 2   #TODO
+    segment_duration =  50e3 #TODO
+    num_train_segments = 4   #TODO
 
     # ======== model settings ========
     def get_model(self):
@@ -258,7 +258,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = ''
+    resume      = 'checkpoint_23.pth.tar'
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -313,7 +313,7 @@ class TestSettings(object):
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_10.pth.tar'
+    checkpoint      = 'checkpoint_23.pth.tar'
     batch_size      = 1
 
 

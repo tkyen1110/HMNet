@@ -71,7 +71,8 @@ class TransformBase(object):
             param, back_param = trans.get_param_using_data(image_size, datas, types)
         else:
             param, back_param = trans.get_param(image_size)
-
+            # param = {'method': Padding, 'padding': (0,0,0,0), 'const_image': 0, 'const_mask': -1, 'padding_mode': 'constant', 'backend': 'Torch'}
+            # back_param = {'method': Crop, 'crop_size': (240, 304), 'crop_position': (0, 0), 'bbox_filter_by_center': False, 'clip_border': True}
         # set input image_size
         param['image_size'] = image_size
 

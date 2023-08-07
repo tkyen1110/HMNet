@@ -55,8 +55,10 @@ def evaluate_folders(dt_folder, gt_lst, camera):
 
     result_boxes_list = [np.load(p) for p in dt_file_paths]
     result_boxes_list = [reformat_boxes(p) for p in result_boxes_list]
+    # result_boxes_list[0].dtype.names = ('t', 'x', 'y', 'w', 'h', 'class_id', 'track_id', 'class_confidence')
 
     gt_boxes_list = [np.load(p) for p in gt_file_paths]
+    # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'confidence', 'track_id', 'invalid')
     for i, gt_boxes in enumerate(gt_boxes_list):
         invalids = gt_boxes['invalid']
         if np.sum(invalids) > 0:
@@ -64,6 +66,7 @@ def evaluate_folders(dt_folder, gt_lst, camera):
         gt_boxes = rfn.drop_fields(gt_boxes, 'invalid')
         gt_boxes_list[i] = gt_boxes
     gt_boxes_list = [reformat_boxes(p) for p in gt_boxes_list]
+    # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'track_id', 'class_confidence')
 
     min_box_diag = 60 if camera == 'GEN4' else 30
     min_box_side = 20 if camera == 'GEN4' else 10
@@ -87,10 +90,10 @@ if __name__ == '__main__':
     '''
     python ./scripts/psee_evaluator.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox/result/pred_test --camera GEN1
+      ./workspace/hmnet_B3_yolox/result/pred_test_10 --camera GEN1
 
     python ./scripts/psee_evaluator.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox_regular_batch/result/pred_test --camera GEN1
+      ./workspace/hmnet_B3_yolox_regular_batch/result/pred_test_10 --camera GEN1
     '''
     main()

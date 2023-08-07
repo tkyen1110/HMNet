@@ -93,6 +93,8 @@ def main(config):
     list_fpath_lbl = get_chunk(list_fpath_lbl, chunk_str=config.test_chunks)
 
     for fpath_evt, fpath_lbl in zip(list_fpath_evt, list_fpath_lbl):
+        assert os.path.basename(fpath_evt).replace("_td.npy", "")==os.path.basename(fpath_lbl).replace("_bbox.npy", "")
+
         # get dataset
         dataset = config.get_dataset(fpath_evt, fpath_lbl, config.fpath_meta, config.fpath_gt_duration, config.data_root, fast_mode=config.fast)
         loader = torch.utils.data.DataLoader(dataset,

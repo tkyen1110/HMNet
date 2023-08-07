@@ -135,6 +135,8 @@ class HMDet(BlockBase):
         self.backbone.prepair_for_inference(batch_size, image_size=(height, width))
 
         for idx, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
+            # len(events) = 1
+            # events[0].shape = torch.Size([N, 4])
             events = to_device(events, d0)
 
             timer.lazy_start(43)
@@ -150,6 +152,10 @@ class HMDet(BlockBase):
                 with torch.cuda.stream(s0):
                     x = self.neck(features)
                     list_bbox_dict = self._bbox_head_test(self.bbox_head, x, image_metas)
+                    # len(list_bbox_dict) = 0
+                    # list_bbox_dict[0] = { 'bboxes': tensor([[x1, y1, x2, y2], ...]),
+                    #                       'labels': tensor([]),
+                    #                       'scores': tensor([])  }
                     list_bbox_dict, image_metas = self._backward_transform(list_bbox_dict, image_metas)
                     output += list_bbox_dict
                     output_image_metas += image_metas
