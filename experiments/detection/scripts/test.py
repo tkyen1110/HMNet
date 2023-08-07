@@ -28,26 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('config', type=str, help='Config file')
-    parser.add_argument('data_list', type=str, help='Path for directory containing file lists for testing')
-    parser.add_argument('data_root', type=str, help='Path for dataset root directory')
-    parser.add_argument('--mode', type=str, default='single_process', choices=('single_process', 'multi_process', 'cuda_stream'), help='')
-    parser.add_argument('--speed_test', action='store_true', help='Measure inference time')
-    parser.add_argument('--name', type=str, default=None, help='Name of the model. (default value is set by this script name)')
-    parser.add_argument('--gpuid', type=str, default=0, help='GPU ID')
-    parser.add_argument('--cpu', action='store_true', help='Run in CPU mode')
-    parser.add_argument('--test_chunks', type=str, default='1/1', help='"{CHUNK_ID}/{NUM_CHUNKS}": Split test data into NUM_CHUNKS and run inference on a specified CHUNK_ID.')
-    parser.add_argument('--pretrained', type=str, help='Path for the pretrained weight (checkpoint file in workspace will be loaded by default)')
-    parser.add_argument('--random_init', action='store_true', help='Run without pretrained weights')
-    parser.add_argument('--devices', type=int, nargs='*', help='')
-    parser.add_argument('--fast', action='store_true', help='Convert to fast model')
-    parser.add_argument('--fp16', action='store_true', help='Run in FP16 mode')
-    parser.add_argument('--compile', type=str, choices=('jit', 'trt', 'onnx', 'otrt', 'inductor', 'aot_ts_nvfuser'), help='Compile and accelarate the model')
-    args = parser.parse_args()
-
+import argparse
 import os
 import numpy as np
 import sys
@@ -112,6 +93,8 @@ def main(config):
     list_fpath_lbl = get_chunk(list_fpath_lbl, chunk_str=config.test_chunks)
 
     for fpath_evt, fpath_lbl in zip(list_fpath_evt, list_fpath_lbl):
+        assert os.path.basename(fpath_evt).replace("_td.npy", "")==os.path.basename(fpath_lbl).replace("_bbox.npy", "")
+
         # get dataset
         dataset = config.get_dataset(fpath_evt, fpath_lbl, config.fpath_meta, config.fpath_gt_duration, config.data_root, fast_mode=config.fast)
         loader = torch.utils.data.DataLoader(dataset,
@@ -123,7 +106,19 @@ def main(config):
 
         results = []
         for i, data in enumerate(loader):
+            # data_streams, target_streams, meta_streams = data
+            # len(data_streams) = 12000
+            # len(data_streams[0]) = 1
+            # len(target_streams) = 12000
+            # len(target_streams[0]) = 1
+            # len(meta_streams) = 12000
+            # len(meta_streams[0]) = 1
+
             events, image_metas = parse_event_data(data, config.device)
+            # len(events) = 12000
+            # len(events[0]) = 1
+            # len(image_metas) = 12000
+            # len(image_metas[0]) = 1
 
             if i == 0 and config.compile is not None:
                 h = image_metas[0][0]['height']
@@ -143,7 +138,7 @@ def main(config):
 
         results = rfn.stack_arrays(results, usemask=False)
         print(f'\nwriting results')
-        np.save(f"{config.dpath_out}/{fpath_evt.split('/')[-1]}", results)
+        np.save(f"{config.dpath_out}/{fpath_evt.split('/')[-1].replace('_td', '_bbox')}", results) # TK
 
 
 def backward_transform(list_bbox_dict, img_metas, transform):
@@ -251,7 +246,31 @@ def get_dirname(path):
     return path.split('/')[-1].split('.')[0]
 
 if __name__ == '__main__':
+    '''
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet \
+      --pretrained ./pretrained/gen1_hmnet_B3_tbptt.pth --fast --speed_test
+    '''
     __spec__ = None
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config', type=str, help='Config file')
+    parser.add_argument('data_list', type=str, help='Path for directory containing file lists for testing')
+    parser.add_argument('data_root', type=str, help='Path for dataset root directory')
+    parser.add_argument('--mode', type=str, default='single_process', choices=('single_process', 'multi_process', 'cuda_stream'), help='')
+    parser.add_argument('--speed_test', action='store_true', help='Measure inference time')
+    parser.add_argument('--name', type=str, default=None, help='Name of the model. (default value is set by this script name)')
+    parser.add_argument('--gpuid', type=str, default=0, help='GPU ID')
+    parser.add_argument('--cpu', action='store_true', help='Run in CPU mode')
+    parser.add_argument('--test_chunks', type=str, default='1/1', help='"{CHUNK_ID}/{NUM_CHUNKS}": Split test data into NUM_CHUNKS and run inference on a specified CHUNK_ID.')
+    parser.add_argument('--pretrained', type=str, help='Path for the pretrained weight (checkpoint file in workspace will be loaded by default)')
+    parser.add_argument('--random_init', action='store_true', help='Run without pretrained weights')
+    parser.add_argument('--devices', type=int, nargs='*', help='')
+    parser.add_argument('--fast', action='store_true', help='Convert to fast model')
+    parser.add_argument('--fp16', action='store_true', help='Run in FP16 mode')
+    parser.add_argument('--compile', type=str, choices=('jit', 'trt', 'onnx', 'otrt', 'inductor', 'aot_ts_nvfuser'), help='Compile and accelarate the model')
+    args = parser.parse_args()
     config = get_config(args)
     makedirs(config.dpath_out)
     main(config)

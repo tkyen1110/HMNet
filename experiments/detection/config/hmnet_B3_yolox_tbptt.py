@@ -28,7 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys
+import os, sys
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lrsch
@@ -188,12 +188,13 @@ class TrainSettings(object):
             RandomFlip(prob=0.5, direction='H'),
         ])
 
+        HMNet_dataset = '/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet'
         train_dataset = EventPacketStream(
-            fpath_evt_lst      = './data/gen1/list/train/events.txt',
-            fpath_lbl_lst      = './data/gen1/list/train/labels.txt',
-            base_path          = './data/gen1',
-            fpath_meta         = './data/gen1/list/train/meta.pkl',
-            fpath_gt_duration  = './data/gen1/list/train/gt_interval.csv',
+            fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
+            fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),
+            base_path          = '',
+            fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
+            fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
             video_duration     = 60e6,
             train_duration     = TRAIN_DURATION,
             delta_t            = DELTA_T,
@@ -289,7 +290,7 @@ class TestSettings(object):
         test_dataset = EventPacketStream(
             fpath_evt_lst      = [fpath_evt],
             fpath_lbl_lst      = [fpath_lbl],
-            base_path          = base_path,
+            base_path          = '',
             fpath_meta         = fpath_meta,
             fpath_gt_duration  = fpath_gt_duration,
             video_duration     = 60e6,

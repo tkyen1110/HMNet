@@ -13,7 +13,7 @@
 *.mdb
 *.swp
 *.out
-*.pth
+#*.pth
 *.7z
 *.xml
 *.h5
