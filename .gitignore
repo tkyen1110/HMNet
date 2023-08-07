@@ -28,5 +28,5 @@ experiments/detection/gen1_demo
 experiments/*/workspace
 experiments/*/debug
 experiments/*/data/*/*
-hmnet/utils/psee_toolbox
+#hmnet/utils/psee_toolbox
 !experiments/*/data/*/scripts
