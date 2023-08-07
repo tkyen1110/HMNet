@@ -29,6 +29,23 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('config', type=str, help='Config file')
+parser.add_argument('--seed', type=int, default=42, help='')
+parser.add_argument('--single'    , action='store_true', help='Run in single GPU')
+parser.add_argument('--amp'       , action='store_true', help='Use automatic mixed precision')
+parser.add_argument('--debug'     , action='store_true', help='Run in debug mode')
+parser.add_argument('--clean'     , action='store_true', help='Clear workspace if already exist')
+parser.add_argument('--overwrite' , action='store_true', help='Overwrite workspace')
+parser.add_argument('-q','--quiet', action='store_true', help='Surpress standart output')
+# Arguments for DDP
+parser.add_argument('--distributed', action='store_true', help='Enable distributed data parallel')
+parser.add_argument('--master', type=str, default='localhost', help='[DDP] IP address or name of a master node (default: "localhost")')
+parser.add_argument('--node'  , type=str, default='1/1'      , help='[DDP] Specify node index and total number of nodes in the form of "{Node_Index}/{Total_Number_of_Nodes}" (e.g. 1/2, 2/2).\
+                                                                     Master node must have node index = 1.\
+                                                                     Specify "1/1" for single node DDP (default)')
+args = parser.parse_args()
+
 import os
 import sys
 import shutil
@@ -48,8 +65,8 @@ from torch.cuda.amp import autocast, GradScaler
 import torch.multiprocessing as mp
 
 from hmnet.models.base.init import load_state_dict_matched
-from hmnet.utils.common import set_logger as utils_set_logger
 from hmnet.utils.common import makedirs, fix_seed, split_list, MovingAverageMeter
+from hmnet.utils import common as utils
 from hmnet.dataset.custom_loader import PseudoEpochLoader
 
 torch.backends.cudnn.benchmark = True
@@ -79,17 +96,15 @@ def main(local_rank, args, dist_settings=None):
     config.device = torch.device("cuda:%d" % local_rank)
     torch.cuda.set_device(local_rank)
 
-    # set dataset
-    train_dataset = config.get_dataset(config.loader_param.batch_size)
-
-    # get dataloader
-    train_loader = get_dataloader(train_dataset, rank, world_size, config)
-
     # set model
     model = config.get_model()
     if config.distributed:
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model = model.to(config.device)
+
+    # reset seed for debug
+    #if config.seed is not None:
+    #    fix_seed(config.seed)
 
     # set optimizer
     optimizer, scheduler, scaler = set_optimizer(model, config)
@@ -113,6 +128,12 @@ def main(local_rank, args, dist_settings=None):
         )
         model = nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], **settings)
 
+    # set dataset
+    train_dataset = config.get_dataset()
+
+    # get dataloader
+    train_loader = get_dataloader(train_dataset, rank, world_size, config)
+
     print_log('Configure done: N_GPUS=%d' % world_size, rank, config)
 
     start_epoch = getattr(config, 'start_epoch', 0)
@@ -120,6 +141,7 @@ def main(local_rank, args, dist_settings=None):
 
     # iter epochs
     for epoch in range(start_epoch, num_epochs):
+
         train(epoch, train_loader, model, optimizer, scheduler, scaler, rank, config)
 
         # save
@@ -130,7 +152,7 @@ def main(local_rank, args, dist_settings=None):
                 'optimizer' : optimizer.state_dict(),
                 'scaler'    : scaler.state_dict(),
             }
-            save_checkpoint(checkpoint, config.dpath_out, filename=f'checkpoint_{epoch+1}.pth.tar')
+            save_checkpoint(checkpoint, config.dpath_out, filename=f'/checkpoint_{epoch+1}.pth.tar')
 
     if config.distributed:
         dist.barrier()
@@ -138,7 +160,7 @@ def main(local_rank, args, dist_settings=None):
 
 def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     print_log('start epoch', rank, config)
-
+    
     # switch to train mode
     model.train()
 
@@ -148,52 +170,33 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
     meter.timer_start()
 
     for batch_idx, data in enumerate(loader):
-        '''
-        data_streams, target_streams, meta_streams = data
-        len(data_streams)   = T = 40 ; len(data_streams[0])   = B = 4
-        len(target_streams) = T = 40 ; len(target_streams[0]) = B = 4
-        len(meta_streams)   = T = 40 ; len(meta_streams[0])   = B = 4
-        '''
-        list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks = parse_event_data(data)
-        # len(list_events) = T ; len(list_events[0]) = B
 
-        '''
-        print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
-        init_states_bool = np.empty(len(list_events[0]), dtype=bool)
-        for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
-            for i, image_meta in enumerate(image_metas):
-                init_states_bool[i] = image_meta['init_states']
-            assert init_states_bool.all() or np.logical_not(init_states_bool).all()
-            if init_states_bool.all():
-                print(batch_idx, count, init_states_bool.all())
-        '''
+        list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks = parse_event_data(data)
         meter.record_data_time()
 
-        segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
-        seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks = \
-                split_into_segments(list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, segment_duration=segment_duration, num_train_segments=config.num_train_segments)
-        # seg_events (list of list) = [num_train_segments, Ts, B] = [2, 20, 4] where num_train_segments * Ts = T
+        if hasattr(config, 'segment_duration'):
+            segment_duration = adapt_segment_durations(list_events, list_image_metas, config.segment_duration, getattr(config, 'max_count_per_segment', 15000*162))
+
+            seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks = \
+                    split_into_segments(list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, segment_duration=segment_duration, num_train_segments=config.num_train_segments)
+        else:
+            seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks = \
+                    [list_events], [list_image_metas], [list_gt_bboxes], [list_gt_labels], [list_ignore_masks]
 
         for seg_idx, (events, image_metas, gt_bboxes, gt_labels, ignore_masks) in enumerate(zip(seg_events, seg_image_metas, seg_gt_bboxes, seg_gt_labels, seg_ignore_masks)):
-            events = to_device(events, config.device) # events (list of list) = [Ts, B] = [20, 4]
-            gt_bboxes = to_device(gt_bboxes, config.device, empty_none=True)
-            gt_labels = to_device(gt_labels, config.device, empty_none=True)
-            ignore_masks = to_device(ignore_masks, config.device, empty_none=True)
+
+            events = to_device(events, config.device)
+            gt_bboxes = to_device(gt_bboxes, config.device)
+            gt_labels = to_device(gt_labels, config.device)
+            ignore_masks = to_device(ignore_masks, config.device)
 
             # clear grad
             optimizer.zero_grad(set_to_none=True)
 
-            init_states_bool = np.empty(len(image_metas[0]), dtype=bool)
-            for i, image_meta in enumerate(image_metas[0]):
-                init_states_bool[i] = image_meta['init_states']
-            assert init_states_bool.all() or np.logical_not(init_states_bool).all()
-            if init_states_bool.all():
-                print_log('Refresh memory: batch_idx = {}, seg_idx = {}'.format(batch_idx, seg_idx), rank, config)
-
             # forward
             if config.amp:
                 with autocast(enabled=True):
-                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=seg_idx==0)    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
                 meter.update(loss, loss_reports)
@@ -204,23 +207,20 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
                 if scaler.get_scale() >= scale_before_step:
                     scheduler.step(loader.nowiter)
             else:
-                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=seg_idx==0)    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
-                if loss > 0:
-                    meter.update(loss, loss_reports)
-                    loss.backward()
-                    optimizer.step()
-                    scheduler.step(loader.nowiter)
-                else:
-                    continue
+                meter.update(loss, loss_reports)
+                loss.backward()
+                optimizer.step()
+                scheduler.step(loader.nowiter)
 
         # measure elapsed time
         meter.record_batch_time()
 
         # report
         if batch_idx % config.print_freq == 0:
-            meter.batch_report_train(epoch, loader.nowiter, config.maxiter, optimizer, config, segment_duration)
+            meter.batch_report_train(epoch, loader.nowiter, config.maxiter, optimizer, config)
 
         meter.timer_start()
 
@@ -316,7 +316,7 @@ class Meter:
                     self.loss_reports[key] = MovingAverageMeter()
                 self.loss_reports[key].update(value)
 
-    def batch_report_train(self, epoch, nowiter, maxiter, optimizer, config, segment_duration):
+    def batch_report_train(self, epoch, nowiter, maxiter, optimizer, config):
         if self.rank == 0:
             header = 'Epoch,Iter,Loss'
             csv = '%d,%d,%f' % (epoch+1, nowiter, self.loss_meter.mv_avg)
@@ -328,7 +328,6 @@ class Meter:
             logstr, header, csv = self._print_loss(logstr, header, csv, meter='val')
             logstr, header, csv = self._print_optim(logstr, header, csv, optimizer)
             logstr, header, csv = self._print_gpu_usage(logstr, header, csv)
-            logstr += f'\n    Segment duration: {segment_duration}'
             logstr += '\n'
             header += '\n'
             csv += '\n'
@@ -400,7 +399,7 @@ def init_ddp(local_rank, dist_settings, config):
     rank_offset, world_size, master = dist_settings
     rank = local_rank + rank_offset
 
-    if config.dist_comm_file is True:
+    if getattr(config, 'dist_comm_file', False) is True:
         dist.init_process_group(backend='nccl', init_method='file:///home/hama/tmp/%s.cmm' % config.name, rank=rank, world_size=world_size)
     else:
         os.environ['MASTER_ADDR'] = master
@@ -450,31 +449,24 @@ def get_dataloader(dataset, rank, world_size, config, val=False):
         config.loader_param['drop_last'] = False
 
     if val == False:
-        config.iter_per_epoch = len(dataset.sampling_timings) // dataset.batch_size
-        config.maxiter = config.iter_per_epoch * config.NUM_EPOCHS
-        config.schedule[0]['range'] = (0, config.maxiter)
         loader = PseudoEpochLoader(dataset=dataset, sampler=sampler, **loader_param, iter_per_epoch=config.iter_per_epoch, start_epoch=config.start_epoch)
     else:
         loader = torch.utils.data.DataLoader(dataset, sampler=sampler, **loader_param)
 
     return loader
 
-def to_device(data, device, non_blocking=True, empty_none=False):
+def to_device(data, device, non_blocking=True):
     if data is None:
         return data
     elif isinstance(data, (list, tuple)):
         return [ to_device(d, device, non_blocking) for d in data ]
     elif isinstance(data, torch.Tensor):
-        if empty_none and len(data)==0:
-            data = None
-        else:
-            return data.to(device, non_blocking=non_blocking)
+        return data.to(device, non_blocking=non_blocking)
     else:
         return data
 
 def load_params_if_specified(model, rank, config):
     fpath_load = getattr(config, 'load', '')
-
     if fpath_load is not None and fpath_load != '':
         state_dict = torch.load(fpath_load, map_location=config.device)['state_dict']
         no_matching = load_state_dict_matched(model, state_dict)
@@ -504,11 +496,10 @@ def resume_if_specified(model, optimizer, scaler, config):
 def save_checkpoint(state, dpath_out, filename='checkpoint.pth.tar'):
     fpath_chk    = dpath_out + '/' + filename
     torch.save(state, fpath_chk)
-    '''
+
     fpath_latest = dpath_out + '/' + 'checkpoint.pth.tar'
     if fpath_chk != fpath_latest:
         shutil.copyfile(fpath_chk, fpath_latest)
-    '''
 
 def prepair_workspace(config):
     dpath_out    = config.dpath_out
@@ -534,7 +525,7 @@ def set_logger(rank, config):
         # setup logger
         level = getattr(config, 'log_level', 20)
         logfile = config.dpath_out + '/pytorch.log'
-        config.logger = utils_set_logger(config.quiet, logfile, level)
+        config.logger = utils.set_logger(config.quiet, logfile, level)
 
 def set_meter(rank, config):
     # setup meter
@@ -552,14 +543,11 @@ def get_config(args):
     config.seed = args.seed
     config.single = args.single
     config.amp = args.amp
-    # args.debug
     config.clean = args.clean
     config.overwrite = args.overwrite
     config.quiet = args.quiet
-    config.distributed = args.distributed
-    # args.master
-    # args.node
     config.start_epoch = 0
+    config.distributed = args.distributed
 
     if args.debug == True:
         config.maxiter = 4000
@@ -643,30 +631,11 @@ def parse_event_data(inputs):
         return events, image_metas, gt_bboxes, gt_labels, ignore_masks
 
 if __name__ == '__main__':
-    # CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
-    # CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
     __spec__ = None
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('config', type=str, help='Config file')
-    parser.add_argument('--seed', type=int, default=42, help='')
-    parser.add_argument('--single'    , action='store_true', help='Run in single GPU')
-    parser.add_argument('--amp'       , action='store_true', help='Use automatic mixed precision')
-    parser.add_argument('--debug'     , action='store_true', help='Run in debug mode')
-    parser.add_argument('--clean'     , action='store_true', help='Clear workspace if already exist')
-    parser.add_argument('--overwrite' , action='store_true', help='Overwrite workspace')
-    parser.add_argument('-q','--quiet', action='store_true', help='Surpress standart output')
-    # Arguments for DDP
-    parser.add_argument('--distributed', action='store_true', help='Enable distributed data parallel')
-    parser.add_argument('--master', type=str, default='localhost', help='[DDP] IP address or name of a master node (default: "localhost")')
-    parser.add_argument('--node'  , type=str, default='1/1'      , help='[DDP] Specify node index and total number of nodes in the form of "{Node_Index}/{Total_Number_of_Nodes}" (e.g. 1/2, 2/2).\
-                                                                        Master node must have node index = 1.\
-                                                                        Specify "1/1" for single node DDP (default)')
-    args = parser.parse_args()
     args.name = args.config.split('/')[-1].replace('.py', '')
 
     if args.distributed:
-        master, rank_offset, world_size, local_size = get_ddp_settings(args.dist_hostlist)
+        master, rank_offset, world_size, local_size = get_ddp_settings(args.master, args.node)
         dist_settings = [rank_offset, world_size, master]
         main_ddp(args, dist_settings, nprocs=local_size)
     else:

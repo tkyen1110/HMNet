@@ -28,7 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import sys, os
+import sys
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lrsch
@@ -51,7 +51,6 @@ backbone = dict(
     output_dims  = [256, 256, 256],
     num_heads    = [4, 8,  8],
     depth        = [1, 3,  9],
-    warmup       = 0, # TODO
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -179,24 +178,23 @@ head = dict(
 
 class TrainSettings(object):
     # ======== train data settings ========
-    def get_dataset(self, batch_size):
+    def get_dataset(self):
         train_transform = Compose([
             RandomResize(scale_min=0.5, scale_range=15, event_downsampling='NONE', event_upsampling='NONE', event_resampling='NONE'),
             Padding(size=INPUT_SIZE, halign='center', valign='center', const_image=0, const_mask=-1, padding_mode='constant'),
             RandomCrop(crop_size=INPUT_SIZE, const_image=0, clip_border=False, bbox_filter_by_center=True),
             RandomFlip(prob=0.5, direction='H'),
         ])
-        HMNet_dataset = '/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet'
+
         train_dataset = EventPacketStream(
-            fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
-            fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),
-            base_path          = '',
-            fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
-            fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
-            batch_size         = batch_size,      # TODO
+            fpath_evt_lst      = './data/gen1/list/train/events.txt',
+            fpath_lbl_lst      = './data/gen1/list/train/labels.txt',
+            base_path          = './data/gen1',
+            fpath_meta         = './data/gen1/list/train/meta.pkl',
+            fpath_gt_duration  = './data/gen1/list/train/gt_interval.csv',
             video_duration     = 60e6,
-            train_duration     = TRAIN_DURATION,  # 200e3 us
-            delta_t            = DELTA_T,         # 5e3   us
+            train_duration     = TRAIN_DURATION,
+            delta_t            = DELTA_T,
             skip_ts            = 0,
             use_nearest_label  = False,
             sampling           = 'label',
@@ -206,23 +204,18 @@ class TrainSettings(object):
             start_index_aug_method = 'end',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method        = 'relative_time', # TODO
         )
 
         return train_dataset
 
     loader_param = dict(
-        batch_size  = 2,
+        batch_size  = 16,
         shuffle     = True,
-        num_workers = 2,
+        num_workers = 4,
         pin_memory  = True,
         drop_last   = True,
         collate_fn  = collate_keep_dict,
     )
-
-    # segment_duration x num_train_segments = train_duration
-    segment_duration =  50e3 #TODO
-    num_train_segments = 4   #TODO
 
     # ======== model settings ========
     def get_model(self):
@@ -235,11 +228,11 @@ class TrainSettings(object):
         return model
 
     # ======== optimizer settings ========
-    # N_SAMPLES = 72371 # TODO
+    N_SAMPLES = 72371
     NUM_EPOCHS = 90
     bsize = loader_param['batch_size']
-    # iter_per_epoch = N_SAMPLES // bsize
-    maxiter = 0 # iter_per_epoch * NUM_EPOCHS
+    iter_per_epoch = N_SAMPLES // bsize
+    maxiter = iter_per_epoch * NUM_EPOCHS
 
     optimizer    = torch.optim.AdamW
     optim_params = dict(
@@ -248,7 +241,7 @@ class TrainSettings(object):
         weight_decay = 0.01,
     )
     schedule = [
-        {'method': 'cosine', 'range': (0, maxiter), 'start_lr': optim_params['lr'], 'end_lr': 1.0e-7}
+        {'method': 'cosine', 'range': (0,maxiter), 'start_lr': optim_params['lr'], 'end_lr': 1.0e-7}
     ]
     lr_scheduler = lrsch.LambdaLR
     lrsch_params = dict( lr_lambda = CombinationV2(schedule, optim_params['lr']) )
@@ -258,7 +251,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = 'checkpoint_23.pth.tar'
+    resume      = ''
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -284,16 +277,15 @@ class TestSettings(object):
 
         return model
 
-    def get_dataset(self, fpath_evt, fpath_lbl, fpath_meta, fpath_gt_duration, base_path, fast_mode=False, delta_t=None, batch_size=1):
+    def get_dataset(self, fpath_evt, fpath_lbl, fpath_meta, fpath_gt_duration, base_path, fast_mode=False, delta_t=None):
         delta_t = delta_t or DELTA_T
 
         test_dataset = EventPacketStream(
             fpath_evt_lst      = [fpath_evt],
             fpath_lbl_lst      = [fpath_lbl],
-            base_path          = '',
+            base_path          = base_path,
             fpath_meta         = fpath_meta,
             fpath_gt_duration  = fpath_gt_duration,
-            batch_size         = batch_size,       # TODO
             video_duration     = 60e6,
             train_duration     = 60e6,
             sampling_stride    = 60e6,
@@ -301,19 +293,18 @@ class TestSettings(object):
             skip_ts            = 0,
             use_nearest_label  = False,
             sampling           = 'regular',
+            start_index_aug_method = 'none',
             min_box_diag       = 30,
             min_box_side       = 10,
             random_time_scaling = False,
-            start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
-            time_method         = 'relative_time', # TODO
         )
 
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_23.pth.tar'
+    checkpoint      = 'checkpoint.pth.tar'
     batch_size      = 1
 
 

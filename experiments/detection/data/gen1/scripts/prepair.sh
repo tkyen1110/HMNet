@@ -50,72 +50,46 @@ fi
 echo "=========================================="
 echo " Start preprocessing"
 echo "=========================================="
-Gen1_Automotive_dir="/home/tkyen/opencv_practice/data_1/Gen1_Automotive"
-train_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/train"
-val_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/val"
-test_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/test"
 
-Gen1_Automotive_HMNet_dir="/home/tkyen/opencv_practice/data/Gen1_Automotive/HMNet"
-train_evt_dir="$Gen1_Automotive_HMNet_dir/train_evt"
-val_evt_dir="$Gen1_Automotive_HMNet_dir/val_evt"
-test_evt_dir="$Gen1_Automotive_HMNet_dir/test_evt"
+mkdir -p val_evt
+mkdir -p test_evt
+mkdir -p train_evt
+mkdir -p val_lbl
+mkdir -p test_lbl
+mkdir -p train_lbl
 
-train_lbl_dir="$Gen1_Automotive_HMNet_dir/train_lbl"
-val_lbl_dir="$Gen1_Automotive_HMNet_dir/val_lbl"
-test_lbl_dir="$Gen1_Automotive_HMNet_dir/test_lbl"
+python ./scripts/modify_lbl_field_name.py ./source/detection_dataset_duration_60s_ratio_1.0/val/ ./val_lbl/
+python ./scripts/modify_lbl_field_name.py ./source/detection_dataset_duration_60s_ratio_1.0/test/ ./test_lbl/
+python ./scripts/modify_lbl_field_name.py ./source/detection_dataset_duration_60s_ratio_1.0/train/ ./train_lbl/
 
-mkdir -p $train_evt_dir
-mkdir -p $val_evt_dir
-mkdir -p $test_evt_dir
+python ./scripts/preproc_events.py train
+python ./scripts/preproc_events.py val
+python ./scripts/preproc_events.py test
 
-mkdir -p $train_lbl_dir
-mkdir -p $val_lbl_dir
-mkdir -p $test_lbl_dir
-
-python ./scripts/preproc_events.py $train_dir $train_evt_dir
-python ./scripts/preproc_events.py $val_dir $val_evt_dir
-python ./scripts/preproc_events.py $test_dir $test_evt_dir
-
-python ./scripts/modify_lbl_field_name.py $train_dir $train_lbl_dir
-python ./scripts/modify_lbl_field_name.py $val_dir $val_lbl_dir
-python ./scripts/modify_lbl_field_name.py $test_dir $test_lbl_dir
-
-python ./scripts/validate_bbox.py $train_lbl_dir $train_lbl_dir
-python ./scripts/validate_bbox.py $val_lbl_dir $val_lbl_dir
-python ./scripts/validate_bbox.py $test_lbl_dir $test_lbl_dir
+python ./scripts/validate_bbox.py ./val_lbl/ ./val_lbl/
+python ./scripts/validate_bbox.py ./test_lbl/ ./test_lbl/
+python ./scripts/validate_bbox.py ./train_lbl/ ./train_lbl/
 
 if [ "$FLAG_M" = "TRUE" ];then
     echo "=========================================="
     echo " Generating meta data"
     echo "=========================================="
-    train_list_dir="$Gen1_Automotive_HMNet_dir/list/train"
-    val_list_dir="$Gen1_Automotive_HMNet_dir/list/val"
-    test_list_dir="$Gen1_Automotive_HMNet_dir/list/test"
 
-    mkdir -p $train_list_dir
-    mkdir -p $val_list_dir
-    mkdir -p $test_list_dir
+    mkdir -p ./list/train/
+    mkdir -p ./list/val/
+    mkdir -p ./list/test/
+    ls ./train_evt/*.npy > ./list/train/events.txt
+    ls ./train_lbl/*.npy > ./list/train/labels.txt
+    ls ./val_evt/*.npy > ./list/val/events.txt
+    ls ./val_lbl/*.npy > ./list/val/labels.txt
+    ls ./test_evt/*.npy > ./list/test/events.txt
+    ls ./test_lbl/*.npy > ./list/test/labels.txt
 
-    ls $train_evt_dir/*.npy > $train_list_dir/events.txt
-    ls $train_lbl_dir/*.npy > $train_list_dir/labels.txt
-    ls $val_evt_dir/*.npy > $val_list_dir/events.txt
-    ls $val_lbl_dir/*.npy > $val_list_dir/labels.txt
-    ls $test_evt_dir/*.npy > $test_list_dir/events.txt
-    ls $test_lbl_dir/*.npy > $test_list_dir/labels.txt
-
-    train_meta_dir="$Gen1_Automotive_HMNet_dir/train_meta"
-    val_meta_dir="$Gen1_Automotive_HMNet_dir/val_meta"
-    test_meta_dir="$Gen1_Automotive_HMNet_dir/test_meta"
-
-    python ./scripts/make_event_meta.py $train_evt_dir $train_meta_dir
-    python ./scripts/make_event_meta.py $val_evt_dir $val_meta_dir
-    python ./scripts/make_event_meta.py $test_evt_dir $test_meta_dir
-
-    python ./scripts/merge_meta.py $train_meta_dir $train_list_dir
-    python ./scripts/merge_meta.py $val_meta_dir $val_list_dir
-    python ./scripts/merge_meta.py $test_meta_dir $test_list_dir
-
-    python ./scripts/get_gt_interval.py $train_lbl_dir $train_list_dir
-    python ./scripts/get_gt_interval.py $val_lbl_dir $val_list_dir
-    python ./scripts/get_gt_interval.py $test_lbl_dir $test_list_dir
+    python ./scripts/make_event_meta.py train
+    python ./scripts/make_event_meta.py val
+    python ./scripts/make_event_meta.py test
+    python ./scripts/merge_meta.py
+    python ./scripts/get_gt_interval.py
 fi
+
+

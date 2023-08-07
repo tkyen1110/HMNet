@@ -38,20 +38,6 @@ from ..layers import conv_bn_act, MV2Block
 from ..backbone.resnet import ResBlock
 from ..backbone.vit import TransformerBlock
 
-'''
-neck = dict(
-    type = 'Pyramid',
-    input_proj     = False,
-    in_channels    = [256, 256, 256],
-    input_start_index = 0,
-    dim            = 256,
-    out_indices    = [0, 1, 2],
-    cfg_pyramid_fuse = [
-        dict(direction='bottom-up', pre_trans=False, fuse_method='add', post_trans=True, post_convs=False),
-        dict(direction='top-down' , pre_trans=False, fuse_method='add', post_trans=True, post_convs=False),
-    ],
-)
-'''
 class Pyramid(BlockBase):
     def __init__(self, in_channels, dim, out_indices, input_start_index=0, num_inputs=None, attatch_extra='on_input', input_proj=True,
                  cfg_pyramid_fuse=[ dict(direction='top-down', pre_trans=False, fuse_method='cat', post_trans=True, post_convs=True) ], act_layer=nn.ReLU):
@@ -114,12 +100,6 @@ class Pyramid(BlockBase):
 
         return [ features[i] for i in self.out_indices ]
 
-'''
-cfg_pyramid_fuse = [
-    dict(direction='bottom-up', pre_trans=False, fuse_method='add', post_trans=True, post_convs=False),
-    dict(direction='top-down' , pre_trans=False, fuse_method='add', post_trans=True, post_convs=False),
-]
-'''
 class PyramidFuse(BlockBase):
     def __init__(self, direction, dim, num_levels, pre_trans=False, fuse_method='cat', post_trans=True, post_convs=True, resampling='bilinear', act_layer=nn.ReLU):
         super().__init__()

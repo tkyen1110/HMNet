@@ -455,10 +455,6 @@ class LatentMemory(BlockBase):
         return latent.to_2D()
         
 def scatter_add(values: Tensor, indices: Tensor, dim: int, dim_size: int, use_torch: bool = True, out: Optional[Tensor] = None) -> Tensor:
-    #  values: weights.shape   = torch.Size([L, H=4])
-    # indices: q_indices.shape = torch.Size([L])
-    # dim = 0
-    # dim_size = B*zL
     if use_torch:
         return scatter(values, indices, reduce='add', dim=dim, dim_size=dim_size, out=out)
     else:
@@ -466,19 +462,19 @@ def scatter_add(values: Tensor, indices: Tensor, dim: int, dim_size: int, use_to
             output = out
         else:
             shape = list(values.shape)
-            shape[dim] = dim_size # shape = [B*zL, H=4]
+            shape[dim] = dim_size
             output = torch.zeros(*shape, device=values.device, dtype=values.dtype)
 
         if indices.ndim != values.ndim:
             # broadcast
             assert indices.ndim == 1
             view = [1] * values.ndim
-            view[dim] = len(indices) # view = [L, 1]
+            view[dim] = len(indices)
             repeat = list(values.shape)
-            repeat[dim] = len(indices) # repeat = [L, H=4]
-            indices = indices.view(*view).expand(*repeat) # indices.shape = [L, H=4]
+            repeat[dim] = len(indices)
+            indices = indices.view(*view).expand(*repeat)
         output.scatter_add_(dim, indices, values)
-        return output # shape = [B*zL, H=4]
+        return output
 
 class Downsample(BlockBase):
     def __init__(self, input_dim: int, output_dim: int, stride: int, method: str = 'conv', proj: bool = True, pre_act: bool = True, pre_layer_norm: bool = False) -> None:
@@ -582,10 +578,6 @@ class EventWrite(BlockBase):
 
     def forward_fast_train(self, z: Tensor, key: Tensor, value: Tensor, q_indices: Tensor) -> Tensor:
         lat = z.clone()
-        # z.shape         = torch.Size([B=8, 4560, 128])
-        # key.shape       = torch.Size([L, 4, 32])
-        # value.shape     = torch.Size([L, 4, 32])
-        # q_indices.shape = torch.Size([L])
         z = self.norm_latent(z)
         z = self.attn.forward_fast_train(z, key, value, q_indices)
         z = lat + z
@@ -754,7 +746,6 @@ class MessageGen(BlockBase):
 
         x = self.norm_input(x)
         z = self.norm_latent(z)
-
         x = self.attn(x, z, x_meta, z_meta)
         x = self.out_proj(x)
 
@@ -812,21 +803,16 @@ class SparseCrossAttention(BlockBase):
             return w_dust, q_indices_dust
 
     def softmax(self, weights, q_indices, z_shape, kv_shape):
-        # weights.shape   = torch.Size([L, H=4])
-        # q_indices.shape = torch.Size([L])
-        # z_shape = torch.Size([B=8, 4560, 128])
-        # kv_shape = torch.Size([L, 4, 32])
-
         B, zL, _ = z_shape
         L, H, C = kv_shape
 
-        max_weights = scatter(weights.detach(), q_indices, reduce='max', dim=0, dim_size=B*zL)    # shape = (B*zL, H)
+        max_weights = scatter(weights.detach(), q_indices, reduce='max', dim=0, dim_size=B*zL)    # (B*zL, H)
         if self.noise_filter:
             w_dust, q_indices_dust = self._prepair_dust(B, zL)
             max_weights = torch.maximum(max_weights, w_dust.detach())
             w_dust = (w_dust - max_weights).exp()
-        weights = (weights - max_weights[q_indices]).exp()                               # shape = (L, H)
-        accm = scatter_add(weights, q_indices, dim=0, dim_size=B*zL, use_torch=False)    # shape = (B*zL, H)
+        weights = (weights - max_weights[q_indices]).exp()                               # (L, H)
+        accm = scatter_add(weights, q_indices, dim=0, dim_size=B*zL, use_torch=False)    # (B*zL, H)
         if self.noise_filter:
             accm = accm + w_dust
         weights = weights / (accm[q_indices] + 1.0e-7)
@@ -843,11 +829,6 @@ class SparseCrossAttention(BlockBase):
         return self.forward_fast_train(z, key, value, q_indices, kv_indices)
 
     def forward_fast_train(self, z: Tensor, key: Tensor, value: Tensor, q_indices: dict, kv_indices: Optional[Tensor] = None) -> Tensor:
-        # z.shape         = torch.Size([B=8, 4560, 128])
-        # key.shape       = torch.Size([L, 4, 32])
-        # value.shape     = torch.Size([L, 4, 32])
-        # q_indices.shape = torch.Size([L])
-
         device = z.device
         B, zL, C = z.shape
         H = self.num_heads
@@ -858,15 +839,14 @@ class SparseCrossAttention(BlockBase):
             value = value[kv_indices]
 
         # get query from latents
-        query = self.q(z).view(-1, H, C // H)    # shape = (B*zL, 4, 32)
-        # query.shape = torch.Size([B x 4560, 4, 32])
+        query = self.q(z).view(-1, H, C // H)    # (B*zL, H, C)
         query = query * self.scale
 
         L, H, C = key.shape
 
-        query = query[q_indices, :, :]    # shape = (L, H=4, C=32)
-        weights = (key * query).sum(-1)   # shape = (L, H=4)
-        weights = self.softmax(weights, q_indices, z.shape, key.shape) # shape = (L, H=4)
+        query = query[q_indices, :, :]    # (L, H, C)
+        weights = (key * query).sum(-1)    # (L, H)
+        weights = self.softmax(weights, q_indices, z.shape, key.shape)
 
         # get weighted feature
         message = weights[:,:,None] * value      # (L, H, C)
@@ -893,34 +873,25 @@ class SparseCrossAttention(BlockBase):
 
         return message    # (B, zL, HC)
 
-# cfg_embed = dict(
-#     input_size    = INPUT_SIZE,
-#     out_dim       = [32, 32, 32],
-#     duration      = DELTA_T,
-#     discrete_time = True,
-#     time_bins     = 100,
-#     dynamic       = [True,True,True],
-#     dynamic_dim   = [32, 32, 32],
-# )
 class EventEmbedding(BlockBase):
     def __init__(self, input_size: Tuple[int], latent_size: Tuple[int], discrete_time: bool = False, time_bins: int = 100,
                  duration: int = 5000, dynamic: List[bool] = False, dynamic_dim: Optional[List[int]] = None, out_dim: Optional[List[int]] = None) -> None:
         super().__init__()
         self.discrete_time = discrete_time
-        self.time_bins = time_bins              # 100
-        self.time_delta = duration // time_bins # 5000 // 100 = 50 us
+        self.time_bins = time_bins
+        self.time_delta = duration // time_bins
 
-        self.input_h = input_size[0]   # 240
-        self.input_w = input_size[1]   # 304
-        self.latent_h = latent_size[0] # 60
-        self.latent_w = latent_size[1] # 76
+        self.input_h = input_size[0]
+        self.input_w = input_size[1]
+        self.latent_h = latent_size[0]
+        self.latent_w = latent_size[1]
 
         assert self.input_h % self.latent_h == 0
         assert self.input_w % self.latent_w == 0
-        self.window_h = self.input_h // self.latent_h # 4
-        self.window_w = self.input_w // self.latent_w # 4
+        self.window_h = self.input_h // self.latent_h
+        self.window_w = self.input_w // self.latent_w
 
-        H, W, T = self.window_h, self.window_w, time_bins # 4, 4, 100
+        H, W, T = self.window_h, self.window_w, time_bins
         self.xy   = PositionEmbedding2D(W, H, out_dim[0], dynamic=dynamic[0], dynamic_dim=dynamic_dim[0], shift_normalize=True)
         self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=dynamic[1], dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
         self.pol  = PositionEmbedding1D(2   , out_dim[2], dynamic=dynamic[2], dynamic_dim=dynamic_dim[2])
@@ -1070,20 +1041,18 @@ class EventEmbedding(BlockBase):
             list_evdata = [ [ list(), list(), list() ] for _ in range(len(list_events)) ]
             return list_evdata
 
-        H = lat1.write_bottom_up.attn.num_heads # 4
-        C = lat1.latent_dim # 128
-        ev_tensor = lat1.write_bottom_up.norm_input(ev_tensor) # shape = torch.Size([L, 96])
-        # lat1.write_bottom_up.attn.kv(ev_tensor).shape = torch.Size([L, 256])
-        # lat1.write_bottom_up.attn.kv(ev_tensor).view(-1, 2, H, C // H).shape = torch.Size([L, 2, 4, 32])
-        # lat1.write_bottom_up.attn.kv(ev_tensor).view(-1, 2, H, C // H).permute(1,0,2,3).shape = torch.Size([2, L, 4, 32])
-        kv = lat1.write_bottom_up.attn.kv(ev_tensor).view(-1, 2, H, C // H).permute(1,0,2,3).contiguous() # shape = torch.Size([2, L, 4, 32])
-        key, value = kv[0], kv[1]    # (N, H, C) = (N, 4, 32)
+        H = lat1.write_bottom_up.attn.num_heads
+        C = lat1.latent_dim
+        ev_tensor = lat1.write_bottom_up.norm_input(ev_tensor)
+        kv = lat1.write_bottom_up.attn.kv(ev_tensor).view(-1, 2, H, C // H).permute(1,0,2,3).contiguous()
+        key, value = kv[0], kv[1]    # (L, H, C)
 
-        list_keys = key.split(split_sizes)     # len(list_keys) = 20   ; list_keys[0].shape = torch.Size([4927, 4, 32])
-        list_values = value.split(split_sizes) # len(list_values) = 20 ; list_values[0].shape = torch.Size([4927, 4, 32])
-        list_ev_q = ev_q.split(split_sizes)    # len(list_ev_q) = 20   ; list_ev_q[0].shape = torch.Size([4927])
+        list_keys = key.split(split_sizes)
+        list_values = value.split(split_sizes)
+        list_ev_q = ev_q.split(split_sizes)
+
         list_evdata = list(zip(list_keys, list_values, list_ev_q))
-        # len(list_evdata) = Ts = 40 ; len(list_evdata[0])) = 3
+
         return list_evdata
 
     def _forward(self, dt, x, y, p, b):
@@ -1110,11 +1079,11 @@ class EventEmbedding(BlockBase):
             dt = dt / self.time_delta
 
         # get embeddings
-        xy_embedding = self.xy(x, y)   # shape = [L, 32]
-        time_embedding = self.time(dt) # shape = [L, 32]
-        pol_embedding = self.pol(p)    # shape = [L, 32]
+        xy_embedding = self.xy(x, y)
+        time_embedding = self.time(dt)
+        pol_embedding = self.pol(p)
 
-        embeddings = torch.cat([xy_embedding, time_embedding, pol_embedding], dim=1) # shape = [L, 96]
+        embeddings = torch.cat([xy_embedding, time_embedding, pol_embedding], dim=1)
 
         return embeddings, indices    # (L, C1+C2+C3), (L,)
 

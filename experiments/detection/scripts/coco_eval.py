@@ -30,47 +30,7 @@ from __future__ import print_function
 import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from coco_eval_RED import CocoEvaluator
 
-def nms(box_events, scores, iou_thresh=0.5):
-    """NMS on box_events
-
-    Args:
-        box_events (np.ndarray): nx1 with dtype EventBbox, the sorting order of those box is used as a
-            a criterion for the nms.
-        scores (np.ndarray): nx1 dtype of plain dtype, needs to be argsortable.
-        iou_thresh (float): if two boxes overlap with more than `iou_thresh` (intersection over union threshold)
-            with each other, only the one with the highest criterion value is kept.
-
-    Returns:
-        keep (np.ndarray): Indices of the box to keep in the input array.
-    """
-    x1 = box_events['x']
-    y1 = box_events['y']
-    x2 = box_events['x'] + box_events['w']
-    y2 = box_events['y'] + box_events['h']
-
-    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
-    order = scores.argsort()[::-1]
-
-    keep = []
-    while order.size > 0:
-        i = order[0]
-        keep.append(i)
-        xx1 = np.maximum(x1[i], x1[order[1:]])
-        yy1 = np.maximum(y1[i], y1[order[1:]])
-        xx2 = np.minimum(x2[i], x2[order[1:]])
-        yy2 = np.minimum(y2[i], y2[order[1:]])
-
-        w = np.maximum(0.0, xx2 - xx1 + 1)
-        h = np.maximum(0.0, yy2 - yy1 + 1)
-        inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
-
-        inds = np.where(ovr <= iou_thresh)[0]
-        order = order[inds + 1]
-
-    return sorted(keep)
 
 def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian"), height=240, width=304,
                        time_tol=50000):
@@ -89,7 +49,6 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian
     """
     flattened_gt = []
     flattened_dt = []
-    evaluator = CocoEvaluator(verbose=True)
     for gt_boxes, dt_boxes in zip(gt_boxes_list, dt_boxes_list):
 
         assert np.all(gt_boxes['t'][1:] >= gt_boxes['t'][:-1])
@@ -101,15 +60,6 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian
         gt_win, dt_win = _match_times_rev(all_ts, gt_boxes, dt_boxes, time_tol)
         flattened_gt = flattened_gt + gt_win
         flattened_dt = flattened_dt + dt_win
-
-        if len(gt_win) == 0: # TODO: Why no GT?
-            continue
-        evaluator.partial_eval([np.concatenate(gt_win)], [np.concatenate(dt_win)])
-    coco_kpi = evaluator.accumulate()
-    for k, v in coco_kpi.items():
-        print(k, ': ', v)
-        print(f'coco_metrics/{k}', v)
-    print('test_acc', coco_kpi['mean_ap'])
 
     return _coco_eval(flattened_gt, flattened_dt, height, width, labelmap=classes)
 
@@ -129,13 +79,9 @@ def _match_times_rev(all_ts, gt_boxes, dt_boxes, time_tol):
         nn_ts = dt_ts[nn_idx]
         if dist[nn_idx] < time_tol:
             windowed_dt.append(dt_boxes[dt_boxes['t'] == nn_ts])
-            windowed_dt[-1] = windowed_dt[-1][nms(windowed_dt[-1], windowed_dt[-1]['class_confidence'], iou_thresh=0.5)]
-            windowed_dt[-1]['t'] = ts
         else:
             windowed_dt.append(dt_boxes[:0])
-        print(windowed_gt[-1])
-        print(windowed_dt[-1])
-        print()
+
     return windowed_gt, windowed_dt
 
 def _match_times(all_ts, gt_boxes, dt_boxes, time_tol):

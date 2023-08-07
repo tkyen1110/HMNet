@@ -28,7 +28,6 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox.py 10
 if [ $# -le 0 ];then
     echo "Usage: $0 [1]"
     echo "    [1]: config file"
@@ -38,7 +37,7 @@ fi
 NAME=${1##*/}
 NAME=${NAME%.py}
 
-dir=$(ls -d ./workspace/${NAME}/result/pred_test_$2)
+dir=$(ls -d ./workspace/${NAME}/result/pred_test/)
 out=${dir}/logs
 mkdir -p ${out}
-python ./scripts/psee_evaluator.py /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl/ ${dir} --camera GEN1 > ${out}/result.txt
+python ./scripts/psee_evaluator.py ./data/gen1/test_lbl/ ${dir} --camera GEN1 > ${out}/result.txt

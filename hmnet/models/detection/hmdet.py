@@ -93,11 +93,6 @@ class HMDet(BlockBase):
         self.bbox_head = self.bbox_head.compile(backend, fp16, input_shapes)
 
     def forward(self, list_events, list_image_metas, list_gt_bboxes, list_gt_labels, list_ignore_masks, init_states=True) -> Tensor:
-        # list_image_metas  (list of list) = [Ts, B] = [20, 4]
-        # list_gt_bboxes    (list of list) = [Ts, B] = [20, 4]
-        # list_events       (list of list) = [Ts, B] = [20, 4]
-        # list_gt_labels    (list of list) = [Ts, B] = [20, 4]
-        # list_ignore_masks (list of list) = [Ts, B] = [20, 4]
         if init_states:
             self.idx_offset = 0
 
@@ -109,10 +104,10 @@ class HMDet(BlockBase):
         out_ignore_masks = self._gather(list_ignore_masks, gather_indices)
 
         # Backbone
-        z1_out, z2_out, z3_out = self.backbone(list_events, list_image_metas, gather_indices, init_states=init_states, detach=True, fast_training=True)
+        features = self.backbone(list_events, list_image_metas, gather_indices, init_states=init_states, detach=True, fast_training=True)
 
         # Head
-        loss, log_vars = self._forward_head(z1_out, z2_out, z3_out, out_gt_bboxes, out_gt_labels, out_ignore_masks)
+        loss, log_vars = self._forward_head(features, out_gt_bboxes, out_gt_labels, out_ignore_masks)
 
         # Make sure all parameters are involved in loss calculation
         loss = loss + sum([ 0. * params.sum() for params in self.parameters() ])
@@ -135,8 +130,6 @@ class HMDet(BlockBase):
         self.backbone.prepair_for_inference(batch_size, image_size=(height, width))
 
         for idx, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
-            # len(events) = 1
-            # events[0].shape = torch.Size([N, 4])
             events = to_device(events, d0)
 
             timer.lazy_start(43)
@@ -152,10 +145,6 @@ class HMDet(BlockBase):
                 with torch.cuda.stream(s0):
                     x = self.neck(features)
                     list_bbox_dict = self._bbox_head_test(self.bbox_head, x, image_metas)
-                    # len(list_bbox_dict) = 0
-                    # list_bbox_dict[0] = { 'bboxes': tensor([[x1, y1, x2, y2], ...]),
-                    #                       'labels': tensor([]),
-                    #                       'scores': tensor([])  }
                     list_bbox_dict, image_metas = self._backward_transform(list_bbox_dict, image_metas)
                     output += list_bbox_dict
                     output_image_metas += image_metas
@@ -201,20 +190,18 @@ class HMDet(BlockBase):
 
         return out_bbox_dict, out_img_metas
 
-    def _forward_head(self, z1_out, z2_out, z3_out, out_gt_bboxes, out_gt_labels, out_ignore_masks):
-        if len(z1_out) == 0:
+    def _forward_head(self, features, out_gt_bboxes, out_gt_labels, out_ignore_masks):
+        if len(features[0]) == 0:
             # dummy loss calculation for DDP
             out_gt_bboxes = [ torch.empty(0,4) ]
             out_gt_labels = [ torch.empty(0,1) ]
             out_ignore_masks = [ torch.empty(0,1) ]
-            z1_out = self.backbone.memory1.out_buffer[:1] # shape = torch.Size([1, 256, 60, 76])
-            z2_out = self.backbone.memory2.out_buffer[:1] # shape = torch.Size([1, 256, 30, 38])
-            z3_out = self.backbone.memory3.out_buffer[:1] # shape = torch.Size([1, 256, 15, 19])
+            features = self.backbone.get_dummy_output()
             coef = 0
         else:
             coef = 1
 
-        x = self.neck([z1_out, z2_out, z3_out])
+        x = self.neck(features)
         outputs = self.bbox_head(x)
         loss, log_vars = self.bbox_head.loss(outputs, out_gt_bboxes, out_gt_labels, out_ignore_masks)
 
@@ -270,7 +257,7 @@ class HMDet(BlockBase):
                 time_indices.append(tidx)
 
         time_indices = torch.tensor(time_indices).long()
-        mask = torch.logical_and(time_indices < len(list_gt), (time_indices + idx_offset) > self.backbone.warmup) # self.backbone.warmup = 20
+        mask = torch.logical_and(time_indices < len(list_gt), (time_indices + idx_offset) > self.backbone.warmup)
         time_indices = time_indices[mask]
 
         return time_indices

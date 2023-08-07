@@ -326,15 +326,6 @@ class Stage(BlockBase):
         else:
             return seq_x
 
-    @torch.jit.ignore
-    def flops(self):
-        flops = 0
-        for blk in self.blocks:
-            flops += blk.flops()
-        if self.downsample is not None:
-            flops += self.downsample.flops()
-        return flops
-
 class TransformerBlock(BlockBase):
     def __init__(self, dim: int, num_heads: int, window_size: Tuple[int,int] = (7,7),
                  cyclic_shift: bool = False, grouping: str = 'intra-window', drop_path=0,
@@ -503,20 +494,6 @@ class Attention(BlockBase):
 
         return x
 
-    @torch.jit.ignore
-    def flops(self, N):
-        # calculate flops for 1 window with token length of N
-        flops = 0
-        # qkv = self.qkv(x)
-        flops += N * self.dim * 3 * self.dim
-        # attn = (q @ k.transpose(-2, -1))
-        flops += self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
-        flops += self.num_heads * N * N * (self.dim // self.num_heads)
-        # x = self.proj(x)
-        flops += N * self.dim * self.dim
-        return flops
-
 class SparseAttentionBlock(BlockBase):
     def __init__(self, dim: int, num_heads: int, use_edge_weight: bool = False, drop_path=0., mlp_ratio=4, norm_layer: type = nn.LayerNorm, act_layer: type = nn.GELU) -> None:
         super().__init__()
@@ -645,18 +622,17 @@ class TokenGrouping(BlockBase):
             self.attn_mask = self._make_attn_mask(default_input_size, torch.device('cpu'))
 
     def build(self, x: Tensor, x_meta: dict, input_shape: str = 'seq', output_shape: str = 'seq') -> Tuple[Tensor,Tensor]:
-        # x.shape = torch.Size([B=8, HxW=285, C=256]) ; x_meta = {'shape': (B=8, H=15, W=19)}
         B, H, W = x_meta['shape']
-        self.org_size = (B, H, W) # (8, 15, 19)
+        self.org_size = (B, H, W)
 
         if self.grouping == 'none':
             return x, None
         if H <= self.window_size[0] and W <= self.window_size[1]:
             return x, None
 
-        x = self._to_in(x, (H,W), input_shape) # x.shape = torch.Size([8, 15, 19, 256])
+        x = self._to_in(x, (H,W), input_shape)
 
-        x = self._padding(x) # x.shape = torch.Size([8, 21, 21, 256])
+        x = self._padding(x)
 
         attn_mask = self._make_attn_mask(self.padded_size[-2:], x.device) if self.cyclic_shift else None
 
@@ -736,7 +712,7 @@ class TokenGrouping(BlockBase):
         return F.pad(x, padding, mode='constant', value=0)
 
     def _window_partition(self, x: Tensor) -> Tensor:
-        B, H, W, C = x.shape # x.shape = torch.Size([8, 21, 21, 256])
+        B, H, W, C = x.shape
         h, w = self.window_size
 
         if h == 1 and w == 1:
@@ -918,14 +894,6 @@ class DynamicPosBias(BlockBase):
     def _to_log_scale(self, relative_coords: Tensor) -> Tensor:
         return relative_coords.sign() * (1 + relative_coords.abs()).log()
 
-    @torch.jit.ignore
-    def flops(self, N):
-        flops = N * 2 * self.pos_dim
-        flops += N * self.pos_dim * self.pos_dim
-        flops += N * self.pos_dim * self.pos_dim
-        flops += N * self.pos_dim * self.num_heads
-        return flops
-
 class QKVTransform(BlockBase):
     def __init__(self, dim: int, num_heads: int, qkv_bias: bool = True, cross: bool = False, kv_dim: Optional[int] = None) -> None:
         super().__init__()
@@ -990,13 +958,6 @@ class PatchMergingSwin(BlockBase):
 
         return SeqData(x, x_meta)
 
-    @torch.jit.ignore
-    def flops(self, input_resolution):
-        H, W = input_resolution
-        flops = H * W * self.dim
-        flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
-        return flops
-
 class PatchMergingCross(BlockBase):
     def __init__(self, dim: int, stride: int, norm_layer: type = nn.LayerNorm, patch_size: List[int] = [2], out_dim: Optional[int] = None) -> None:
         super().__init__()
@@ -1021,18 +982,6 @@ class PatchMergingCross(BlockBase):
         xs = [ reduction(x) for reduction in self.reductions ]
         x = torch.cat(xs, dim=1)
         return SeqData.from_2D(x)
-
-    @torch.jit.ignore
-    def flops(self, input_resolution):
-        H, W = input_resolution
-        flops = H * W * self.dim
-        for i, ps in enumerate(self.patch_size):
-            if i == len(self.patch_size) - 1:
-                _outc = self.out_dim // 2 ** i
-            else:
-                _outc = self.out_dim // 2 ** (i + 1)
-            flops += (H // 2) * (W // 2) * ps * ps * _outc * self.dim
-        return flops
 
 def padding_same(data, kernel_size, stride):
     pad = max(0, kernel_size - stride)
@@ -1112,20 +1061,6 @@ class PatchEmbed(BlockBase):
         x_meta = {'shape': (B, H, W)}
         return SeqData(x, x_meta)
 
-    @torch.jit.ignore
-    def flops(self, patches_resolution):
-        Ho, Wo = patches_resolution
-        flops = 0
-        for i, ps in enumerate(self.patch_size):
-            if i == len(self.patch_size) - 1:
-                dim = self.embed_dim // 2 ** i
-            else:
-                dim = self.embed_dim // 2 ** (i + 1)
-            flops += Ho * Wo * dim * self.inc * (self.patch_size[i] * self.patch_size[i])
-        if self.norm is not None:
-            flops += Ho * Wo * self.embed_dim
-        return flops
-
 class Mlp(BlockBase):
     def __init__(self, in_features: int, hidden_features: Optional[int] = None, out_features: Optional[int] = None, act_layer: type = nn.GELU, drop: float = 0.):
         super().__init__()
@@ -1158,7 +1093,6 @@ class CrossAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         self.use_relative_pos_bias = use_relative_pos_bias
-
         if self.use_relative_pos_bias:
             rcoords, table_size = get_relative_position_indices(wsize, kv_wsize)
             self.register_buffer("relative_position_indices", rcoords)
@@ -1166,19 +1100,14 @@ class CrossAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, z: Tensor, x: Tensor, z_meta: dict, x_meta: dict, z_pos: Optional[Tensor] = None, x_pos: Optional[Tensor] = None) -> Tensor:
-        # z.shape = torch.Size([B=8, 285, 256]) ; z_meta = {'shape': (B=8, 15, 19)}
         z, _ = self.grouping.build(z, z_meta)
         x, _ = self.kv_grouping.build(x, x_meta)
 
-        B, N0, C = z.shape # z.shape = torch.Size([63, 49, 256])
-        B, N1, _ = x.shape # x.shape = torch.Size([63, 49, 256])
+        B, N0, C = z.shape
+        B, N1, _ = x.shape
 
         q, k, v = self.qkv(z, context=x)                      # q = (B, H, N0, C)
                                                               # k, v = (B, H, N1, C)
-        # q.shape = torch.Size([63, 8, 49, 32])
-        # k.shape = torch.Size([63, 8, 49, 32])
-        # v.shape = torch.Size([63, 8, 49, 32])
-
         if z_pos is not None:
             q = q + z_pos
         if x_pos is not None:
@@ -1186,7 +1115,7 @@ class CrossAttention(nn.Module):
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))                      # attn = (B, H, N0, N1)
-        # attn.shape = torch.Size([63, 8, 49, 49])
+
         if self.use_relative_pos_bias:
             rpi = self.relative_position_indices
             bias = self.relative_position_bias(rpi[0], rpi[1])  # bias = (N0*N1, H)
@@ -1197,9 +1126,9 @@ class CrossAttention(nn.Module):
         m = (attn @ v).transpose(1, 2).reshape(B, N0, C)
         m = self.proj(m)
         m = self.proj_drop(m)
-        # m.shape = torch.Size([63, 49, 256])
+
         m = self.grouping.resolve(m)
-        # m.shape = torch.Size([7, 285, 256])
+
         return m
 
 def get_relative_position_indices(window1: Tuple[int], window2: Tuple[int]) -> Tuple[Tensor,list]:
