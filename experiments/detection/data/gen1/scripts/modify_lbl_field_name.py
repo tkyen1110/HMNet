@@ -30,13 +30,7 @@
 
 # This script convert field name 'ts' in GEN1 dataset into 't' as in 1 Megapixel dataset
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dpath', type=str, help='')
-    parser.add_argument('dpath_out', type=str, help='')
-    args = parser.parse_args()
-
+import argparse
 import numpy as np
 import numpy.lib.recfunctions as rfn
 
@@ -49,6 +43,8 @@ def main(args):
 
     for fpath in list_fpath_lbl:
         boxes = np.load(fpath)
+        # print(boxes.dtype)
+        # [('ts', '<u8'), ('x', '<f4'), ('y', '<f4'), ('w', '<f4'), ('h', '<f4'), ('class_id', 'u1'), ('confidence', '<f4'), ('track_id', '<u4')]
         boxes = rfn.rename_fields(boxes, {'ts': 't'})
 
         fname = fpath.split('/')[-1]
@@ -59,6 +55,9 @@ def main(args):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    args = parser.parse_args()
     main(args)
-
 

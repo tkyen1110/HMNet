@@ -28,28 +28,21 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('target', type=str, choices=['train', 'val', 'test'], help='')
-    parser.add_argument('--split' , type=str, default='1/1', help='')
-    args = parser.parse_args()
-
+import argparse
 import numpy as np
 
 from hmnet.utils.psee_toolbox.io.dat_events_tools import load_td_data
 from hmnet.utils.common import get_list, get_chunk, mkdir
 
-def main():
-    dpath_out = args.target + '_evt'
-    mkdir(dpath_out)
+def main(args):
+    mkdir(args.dpath_out)
 
-    list_fpath = get_list(f'./source/detection_dataset_duration_60s_ratio_1.0/{args.target}', ext='dat')
+    list_fpath = get_list(f'{args.dpath}', ext='dat')
     list_fpath = get_chunk(list_fpath, chunk_str=args.split)
 
     for fpath in list_fpath:
         data = load_td_data(fpath)
-        fpath_out = dpath_out + '/' + fpath.split('/')[-1].replace('.dat', '.npy')
+        fpath_out = args.dpath_out + '/' + fpath.split('/')[-1].replace('.dat', '.npy')
 
         t = data['t'].astype(int)
         diff = t[1:] - t[:-1]
@@ -61,4 +54,9 @@ def main():
         print(fpath_out)
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    parser.add_argument('--split' , type=str, default='1/1', help='')
+    args = parser.parse_args()
+    main(args)

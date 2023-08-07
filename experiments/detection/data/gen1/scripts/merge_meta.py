@@ -28,13 +28,14 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import argparse
 import numpy as np
 import pickle as pkl
 
 from hmnet.utils.common import get_list
 
-def merge(phase):
-    list_fpath = get_list(f'./{phase}_meta/', ext='npy')
+def merge(args):
+    list_fpath = get_list(f'{args.dpath}', ext='npy')
 
     dict_meta = {}
     for fpath in list_fpath:
@@ -43,8 +44,11 @@ def merge(phase):
         dict_meta[key] = (meta[:,0], meta[:,1])
         print(fpath)
 
-    pkl.dump(dict_meta, open(f'./list/{phase}/meta.pkl', 'wb'))
+    pkl.dump(dict_meta, open(f'{args.dpath_out}/meta.pkl', 'wb'))
 
-merge('val')
-merge('test')
-merge('train')
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    args = parser.parse_args()
+    merge(args)

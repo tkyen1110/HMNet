@@ -28,15 +28,16 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import argparse
 import numpy as np
 
 from hmnet.utils.common import get_list
 
 
-def main(phase):
+def main(args):
     output = ['name,interval']
 
-    list_fpath = get_list(f'{phase}_lbl', ext='npy')
+    list_fpath = get_list(f'{args.dpath}', ext='npy')
     for fpath in list_fpath:
         lbl = np.load(fpath)
 
@@ -60,10 +61,14 @@ def main(phase):
 
         print(interval, fpath.split('/')[-1])
 
-    fpath_out = f"./list/{phase}/gt_interval.csv"
+    fpath_out = f"{args.dpath_out}/gt_interval.csv"
     with open(fpath_out, 'w') as fp:
         fp.write('\n'.join(output))
 
-main('test')
-main('val')
-main('train')
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    args = parser.parse_args()
+
+    main(args)
