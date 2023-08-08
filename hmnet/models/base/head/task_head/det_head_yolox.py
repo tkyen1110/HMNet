@@ -194,6 +194,21 @@ class BBoxHead(BlockBase):
 
         return self
 
+'''
+head = dict(
+    type = 'YOLOXHead',
+    num_classes = 2,
+    strides     = [4, 8, 16],
+    in_channels = [256, 256, 256],
+    stacked_convs = 2,
+    feat_channels = 256,
+    depthwise   = False,
+    act         = "silu",
+    score_thr   = 0.01,
+    nms_iou_threshold = 0.65,
+    ignore_bboxes_as_negative = True,
+)
+'''
 class YOLOXHead(BlockBase):
     def __init__(
         self,
@@ -408,7 +423,7 @@ class YOLOXHead(BlockBase):
         n_ch = 5 + self.num_classes
         hsize, wsize = output.shape[-2:]
         if grid.shape[2:4] != output.shape[2:4]:
-            yv, xv = torch.meshgrid(torch.arange(hsize, device=output.device), torch.arange(wsize, device=output.device), indexing='ij')
+            yv, xv = torch.meshgrid(torch.arange(hsize, device=output.device), torch.arange(wsize, device=output.device)) # , indexing='ij'
             grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype)
             self.grids[k] = grid
 

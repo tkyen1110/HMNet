@@ -33,6 +33,14 @@ import numpy as np
 
 class PseudoEpochLoader:
     def __init__(self, iter_per_epoch, dataset, sampler, start_epoch=0, **loader_param):
+        # loader_param = dict(
+        #     batch_size  = 4,
+        #     shuffle     = True,
+        #     num_workers = 4,
+        #     pin_memory  = True,
+        #     drop_last   = True,
+        #     collate_fn  = collate_keep_dict,
+        # )
         self._loader = torch.utils.data.DataLoader(dataset, sampler=sampler, **loader_param)
         self._iterator = iter(self._loader)
         self._iter_per_epoch = iter_per_epoch

@@ -72,7 +72,7 @@ def nms(box_events, scores, iou_thresh=0.5):
 
     return sorted(keep)
 
-def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian"), height=240, width=304,
+def evaluate_detection(gt_boxes_list, dt_boxes_list, npy_file_list, classes=("car", "pedestrian"), height=240, width=304,
                        time_tol=50000):
     """
     Compute detection KPIs on list of boxes in the numpy format, using the COCO python API
@@ -89,7 +89,7 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian
     """
     flattened_gt = []
     flattened_dt = []
-    for gt_boxes, dt_boxes in zip(gt_boxes_list, dt_boxes_list):
+    for gt_boxes, dt_boxes, npy_file in zip(gt_boxes_list, dt_boxes_list, npy_file_list):
 
         assert np.all(gt_boxes['t'][1:] >= gt_boxes['t'][:-1])
         assert np.all(dt_boxes['t'][1:] >= dt_boxes['t'][:-1])
@@ -103,7 +103,7 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian
 
     return _coco_eval(flattened_gt, flattened_dt, height, width, labelmap=classes)
 
-def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, classes=("car", "pedestrian"), height=240, width=304,
+def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, npy_file_list, classes=("car", "pedestrian"), height=240, width=304,
                            time_tol=50000):
     """
     Compute detection KPIs on list of boxes in the numpy format, using the COCO python API
@@ -121,7 +121,7 @@ def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, classes=("car", "pedest
     flattened_gt = []
     flattened_dt = []
     evaluator = CocoEvaluator(verbose=True)
-    for gt_boxes, dt_boxes in zip(gt_boxes_list, dt_boxes_list):
+    for gt_boxes, dt_boxes, npy_file in zip(gt_boxes_list, dt_boxes_list, npy_file_list):
 
         assert np.all(gt_boxes['t'][1:] >= gt_boxes['t'][:-1])
         assert np.all(dt_boxes['t'][1:] >= dt_boxes['t'][:-1])

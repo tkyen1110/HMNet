@@ -39,7 +39,8 @@ default_collate_err_msg_format = (
     "dicts or lists; found {}")
 
 
-def collate_keep_dict(batch):
+def collate_keep_dict(batch): # TODO: to read
+    # data_streams, target_streams, meta_streams
     elem = batch[0]
     elem_type = type(elem)
     if isinstance(elem, torch.Tensor):

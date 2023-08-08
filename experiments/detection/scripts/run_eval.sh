@@ -28,7 +28,7 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox.py 10
+# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox_tbptt.py pretrained
 if [ $# -le 0 ];then
     echo "Usage: $0 [1]"
     echo "    [1]: config file"

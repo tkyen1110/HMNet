@@ -50,7 +50,9 @@ def evaluate_folders(dt_folder, gt_lst, camera):
     gt_file_paths = get_list(gt_lst, ext='npy')
     assert len(dt_file_paths) == len(gt_file_paths)
     print("There are {} GT bboxes and {} PRED bboxes".format(len(gt_file_paths), len(dt_file_paths)))
+    npy_file_list = list()
     for dt_file_path, gt_file_path in zip(dt_file_paths, gt_file_paths):
+        npy_file_list.append(os.path.basename(gt_file_path))
         assert os.path.basename(dt_file_path)==os.path.basename(gt_file_path)
 
     result_boxes_list = [np.load(p) for p in dt_file_paths]
@@ -76,7 +78,7 @@ def evaluate_folders(dt_folder, gt_lst, camera):
 
     gt_boxes_list = map(filter_boxes_fn, gt_boxes_list)
     result_boxes_list = map(filter_boxes_fn, result_boxes_list)
-    evaluate_detection(gt_boxes_list, result_boxes_list, **eval_conf)
+    evaluate_detection(gt_boxes_list, result_boxes_list, npy_file_list, **eval_conf)
 
 def main():
     parser = argparse.ArgumentParser(prog='psee_evaluator.py')
