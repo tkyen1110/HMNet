@@ -51,8 +51,8 @@ backbone = dict(
     output_dims   = [256, 256, 256],
     num_heads     = [4, 8,  8],
     depth         = [1, 3,  9],
-    warmup        = 0,    # TODO
-    relative_time = True, # TODO
+    warmup        = 0,    # TKYen
+    relative_time = True, # TKYen
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -194,7 +194,7 @@ class TrainSettings(object):
             base_path          = '',
             fpath_meta         = os.path.join(HMNet_dataset, 'list/train/meta.pkl'),
             fpath_gt_duration  = os.path.join(HMNet_dataset, 'list/train/gt_interval.csv'),
-            batch_size         = batch_size,      # TK
+            batch_size         = batch_size,      # TKYen
             video_duration     = 60e6,
             train_duration     = TRAIN_DURATION,  # 200e3 us
             delta_t            = DELTA_T,         # 5e3   us
@@ -207,9 +207,14 @@ class TrainSettings(object):
             start_index_aug_method = 'end',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
+            relative_time      = backbone['relative_time'], # TKYen
         )
 
         return train_dataset
+
+    # segment_duration x num_train_segments = train_duration
+    segment_duration = 100e3 # TKYen
+    num_train_segments = 2   # TKYen
 
     loader_param = dict(
         batch_size  = 16,
@@ -219,10 +224,6 @@ class TrainSettings(object):
         drop_last   = True,
         collate_fn  = collate_keep_dict,
     )
-
-    # segment_duration x num_train_segments = train_duration
-    segment_duration =  50e3 #TODO
-    num_train_segments = 4   #TODO
 
     # ======== model settings ========
     def get_model(self):
@@ -235,11 +236,11 @@ class TrainSettings(object):
         return model
 
     # ======== optimizer settings ========
-    # N_SAMPLES = 72371 # TODO
+    # N_SAMPLES = 72371 # TKYen
     NUM_EPOCHS = 90
     bsize = loader_param['batch_size']
-    # iter_per_epoch = N_SAMPLES // bsize
-    maxiter = 0 # iter_per_epoch * NUM_EPOCHS
+    # iter_per_epoch = N_SAMPLES // bsize # TKYen
+    maxiter = 0 # iter_per_epoch * NUM_EPOCHS # TKYen
 
     optimizer    = torch.optim.AdamW
     optim_params = dict(
@@ -290,10 +291,10 @@ class TestSettings(object):
         test_dataset = EventPacketStream(
             fpath_evt_lst      = [fpath_evt],
             fpath_lbl_lst      = [fpath_lbl],
-            base_path          = '',
+            base_path          = '',               # TKYen
             fpath_meta         = fpath_meta,
             fpath_gt_duration  = fpath_gt_duration,
-            batch_size         = batch_size,       # TK
+            batch_size         = batch_size,       # TKYen
             video_duration     = 60e6,
             train_duration     = 60e6,
             sampling_stride    = 60e6,
@@ -307,6 +308,7 @@ class TestSettings(object):
             start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
+            relative_time       = backbone['relative_time'], # TKYen
         )
 
         return test_dataset
