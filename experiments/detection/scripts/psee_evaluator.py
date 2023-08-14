@@ -94,19 +94,19 @@ if __name__ == '__main__':
     '''
     python ./scripts/psee_evaluator.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox/result/pred_test_10 \
-      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
-      --camera GEN1
-
-    python ./scripts/psee_evaluator.py \
-      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox_regular_batch/result/pred_test_10 \
-      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
-      --camera GEN1
-
-    python ./scripts/psee_evaluator.py \
-      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
       ./workspace/hmnet_B3_yolox_tbptt/result/pred_test_pretrained \
+      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+      --camera GEN1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
+      ./workspace/hmnet_B3_yolox_regular_batch_relative/result/pred_test_10 \
+      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+      --camera GEN1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
+      ./workspace/hmnet_B3_yolox_regular_batch_absolute/result/pred_test_10 \
       --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
       --camera GEN1
     '''

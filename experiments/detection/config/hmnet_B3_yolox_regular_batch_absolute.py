@@ -260,7 +260,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = 'checkpoint_5.pth.tar'
+    resume      = ''
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -315,7 +315,7 @@ class TestSettings(object):
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_5.pth.tar'
+    checkpoint      = ''
     batch_size      = 1
 
 

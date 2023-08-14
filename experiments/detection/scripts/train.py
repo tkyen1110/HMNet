@@ -656,13 +656,13 @@ def parse_event_data(inputs):
 
 if __name__ == '__main__':
     '''
-    CUDA_LAUNCH_BLOCKING=0 CUDA_VISIBLE_DEVICES=0,1 python ./scripts/train.py ./config/hmnet_B3_yolox_tbptt.py --overwrite --amp --distributed
+    CUDA_LAUNCH_BLOCKING=0
 
-    CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
+    CUDA_VISIBLE_DEVICES=0,1 python ./scripts/train.py ./config/hmnet_B3_yolox_tbptt.py --overwrite --amp --distributed
 
-    CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_relative.py --overwrite --amp --distributed
 
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_absolute.py --overwrite
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_absolute.py --overwrite --amp --distributed
     '''
     __spec__ = None
 

@@ -181,12 +181,13 @@ head = dict(
 class TrainSettings(object):
     # ======== train data settings ========
     def get_dataset(self, batch_size):
-        train_transform = Compose([
-            RandomResize(scale_min=0.5, scale_range=15, event_downsampling='NONE', event_upsampling='NONE', event_resampling='NONE'),
-            Padding(size=INPUT_SIZE, halign='center', valign='center', const_image=0, const_mask=-1, padding_mode='constant'),
-            RandomCrop(crop_size=INPUT_SIZE, const_image=0, clip_border=False, bbox_filter_by_center=True),
-            RandomFlip(prob=0.5, direction='H'),
-        ])
+        # train_transform = Compose([
+        #     RandomResize(scale_min=0.5, scale_range=15, event_downsampling='NONE', event_upsampling='NONE', event_resampling='NONE'),
+        #     Padding(size=INPUT_SIZE, halign='center', valign='center', const_image=0, const_mask=-1, padding_mode='constant'),
+        #     RandomCrop(crop_size=INPUT_SIZE, const_image=0, clip_border=False, bbox_filter_by_center=True),
+        #     RandomFlip(prob=0.5, direction='H'),
+        # ])
+        train_transform = None
         HMNet_dataset = '/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet'
         train_dataset = EventPacketStream(
             fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
@@ -207,6 +208,7 @@ class TrainSettings(object):
             start_index_aug_method = 'none',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
+            relative_time      = backbone['relative_time'], # TODO
         )
 
         return train_dataset
@@ -258,7 +260,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = 'checkpoint_17.pth.tar'
+    resume      = ''
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -307,12 +309,13 @@ class TestSettings(object):
             start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
+            relative_time       = backbone['relative_time'], # TODO
         )
 
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_17.pth.tar'
+    checkpoint      = ''
     batch_size      = 1
 
 
