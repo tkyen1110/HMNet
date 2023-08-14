@@ -45,13 +45,14 @@ DELTA_T = 5e3
 INPUT_SIZE = (240, 304)
 
 backbone = dict(
-    type         = 'HMNet',
-    latent_sizes = [(60, 76), (30, 38), (15, 19)],
-    latent_dims  = [128, 256, 256],
-    output_dims  = [256, 256, 256],
-    num_heads    = [4, 8,  8],
-    depth        = [1, 3,  9],
-    warmup       = 0, # TK
+    type          = 'HMNet',
+    latent_sizes  = [(60, 76), (30, 38), (15, 19)],
+    latent_dims   = [128, 256, 256],
+    output_dims   = [256, 256, 256],
+    num_heads     = [4, 8,  8],
+    depth         = [1, 3,  9],
+    warmup        = 0,    # TODO
+    relative_time = True, # TODO
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -206,7 +207,6 @@ class TrainSettings(object):
             start_index_aug_method = 'end',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method        = 'relative_time', # TK
         )
 
         return train_dataset
@@ -307,7 +307,6 @@ class TestSettings(object):
             start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
-            time_method         = 'relative_time', # TODO
         )
 
         return test_dataset

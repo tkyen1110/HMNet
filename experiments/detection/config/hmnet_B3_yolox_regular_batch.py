@@ -45,13 +45,14 @@ DELTA_T = 5e3
 INPUT_SIZE = (240, 304)
 
 backbone = dict(
-    type         = 'HMNet',
-    latent_sizes = [(60, 76), (30, 38), (15, 19)],
-    latent_dims  = [128, 256, 256],
-    output_dims  = [256, 256, 256],
-    num_heads    = [4, 8,  8],
-    depth        = [1, 3,  9],
-    warmup       = 0, # TODO
+    type          = 'HMNet',
+    latent_sizes  = [(60, 76), (30, 38), (15, 19)],
+    latent_dims   = [128, 256, 256],
+    output_dims   = [256, 256, 256],
+    num_heads     = [4, 8,  8],
+    depth         = [1, 3,  9],
+    warmup        = 0,    # TODO
+    relative_time = True, # TODO
 
     cfg_embed = dict(
         input_size    = INPUT_SIZE,
@@ -206,23 +207,22 @@ class TrainSettings(object):
             start_index_aug_method = 'none',
             start_index_aug_ratio = 0.25,
             event_transform    = train_transform,
-            time_method        = 'relative_time', # TODO
         )
 
         return train_dataset
 
     loader_param = dict(
-        batch_size  = 2,
+        batch_size  = 4,
         shuffle     = False,
-        num_workers = 2,
+        num_workers = 4,
         pin_memory  = True,
         drop_last   = True,
         collate_fn  = collate_keep_dict,
     )
 
     # segment_duration x num_train_segments = train_duration
-    segment_duration = 50e3  #TODO
-    num_train_segments = 4   #TODO
+    segment_duration = 100e3  #TODO
+    num_train_segments = 2   #TODO
 
     # ======== model settings ========
     def get_model(self):
@@ -258,7 +258,7 @@ class TrainSettings(object):
     static_graph = False
 
     # ======== other settings ========
-    resume      = 'checkpoint_10.pth.tar'
+    resume      = 'checkpoint_17.pth.tar'
     print_freq  = 10
     fpath_script= sys.argv[0]
 
@@ -307,13 +307,12 @@ class TestSettings(object):
             start_index_aug_method = 'none',
             event_transform     = None,
             output_type         = 'long' if fast_mode else None,
-            time_method         = 'relative_time', # TODO
         )
 
         return test_dataset
 
     # ======== prediction settings ========
-    checkpoint      = 'checkpoint_10.pth.tar'
+    checkpoint      = 'checkpoint_17.pth.tar'
     batch_size      = 1
 
 

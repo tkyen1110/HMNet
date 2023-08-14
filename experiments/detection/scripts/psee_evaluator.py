@@ -26,7 +26,7 @@ import argparse
 import pickle as pkl
 from numpy.lib import recfunctions as rfn
 
-from coco_eval import evaluate_detection
+from coco_eval import evaluate_detection, evaluate_detection_RED
 from hmnet.utils.psee_toolbox.io.box_filtering import filter_boxes
 from hmnet.utils.psee_toolbox.io.box_loading import reformat_boxes
 from hmnet.utils.common import get_list, mkdir
@@ -45,7 +45,7 @@ EVAL_CONF_GEN4 = dict(
     time_tol = 25000, # +/- 25 msec (50 msec)
 )
 
-def evaluate_folders(dt_folder, gt_lst, camera):
+def evaluate_folders(dt_folder, gt_lst, event_folder, camera):
     dt_file_paths = get_list(dt_folder, ext='npy')
     gt_file_paths = get_list(gt_lst, ext='npy')
     assert len(dt_file_paths) == len(gt_file_paths)
@@ -78,24 +78,36 @@ def evaluate_folders(dt_folder, gt_lst, camera):
 
     gt_boxes_list = map(filter_boxes_fn, gt_boxes_list)
     result_boxes_list = map(filter_boxes_fn, result_boxes_list)
-    evaluate_detection(gt_boxes_list, result_boxes_list, npy_file_list, **eval_conf)
+    evaluate_detection(gt_boxes_list, result_boxes_list, npy_file_list, dt_folder, event_folder, **eval_conf)
+    # evaluate_detection_RED(gt_boxes_list, result_boxes_list, npy_file_list, dt_folder, event_folder, **eval_conf)
 
 def main():
     parser = argparse.ArgumentParser(prog='psee_evaluator.py')
     parser.add_argument('gt_lst', type=str, help='Text file contaiing list of GT .npy files')
     parser.add_argument('dt_folder', type=str, help='RESULT folder containing .npy files')
+    parser.add_argument('--event_folder', type=str, help='Event folder containing .dat files')
     parser.add_argument('--camera', type=str, default='GEN4', help='GEN1 (QVGA) or GEN4 (720p)')
     opt = parser.parse_args()
-    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.camera)
+    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.event_folder, opt.camera)
 
 if __name__ == '__main__':
     '''
     python ./scripts/psee_evaluator.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox/result/pred_test_10 --camera GEN1
+      ./workspace/hmnet_B3_yolox/result/pred_test_10 \
+      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+      --camera GEN1
 
     python ./scripts/psee_evaluator.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-      ./workspace/hmnet_B3_yolox_regular_batch/result/pred_test_10 --camera GEN1
+      ./workspace/hmnet_B3_yolox_regular_batch/result/pred_test_10 \
+      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+      --camera GEN1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
+      ./workspace/hmnet_B3_yolox_tbptt/result/pred_test_pretrained \
+      --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+      --camera GEN1
     '''
     main()

@@ -50,6 +50,7 @@ import torch.multiprocessing as mp
 from hmnet.models.base.init import load_state_dict_matched
 from hmnet.utils.common import makedirs, fix_seed, split_list, MovingAverageMeter
 from hmnet.utils import common as utils
+from hmnet.utils.lr_lambda import CombinationV2
 from hmnet.dataset.custom_loader import PseudoEpochLoader
 
 torch.backends.cudnn.benchmark = True
@@ -84,7 +85,7 @@ def main(local_rank, args, dist_settings=None):
     torch.cuda.set_device(local_rank)
 
     # set dataset
-    train_dataset = config.get_dataset(config.loader_param.batch_size) #TK
+    train_dataset = config.get_dataset(config.loader_param.batch_size) # TKYen
 
     # get dataloader
     train_loader = get_dataloader(train_dataset, rank, world_size, config)
@@ -163,6 +164,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
 
         '''
         print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
+        print(list_events[0][0][0][0], list_events[0][0][-1][0])
         init_states_bool = np.empty(len(list_events[0]), dtype=bool)
         for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
             for i, image_meta in enumerate(image_metas):
@@ -202,27 +204,32 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
             # forward
             if config.amp:
                 with autocast(enabled=True):
-                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                    outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())
+                    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
-                meter.update(loss, loss_reports)
-                scale_before_step = scaler.get_scale()
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                if scaler.get_scale() >= scale_before_step:
-                    scheduler.step(loader.nowiter)
+                num_samples = outputs['num_samples']
+
+                if num_samples > 0:
+                    meter.update(loss, loss_reports)
+                    scale_before_step = scaler.get_scale()
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                    if scaler.get_scale() >= scale_before_step:
+                        scheduler.step(loader.nowiter)
             else:
-                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())    # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
+                outputs = model(events, image_metas, gt_bboxes, gt_labels, ignore_masks, init_states=init_states_bool.all())
+                # outputs = dict[loss=Tensor, log_vars=dict[Tensor], num_samples=int]
                 loss = outputs['loss']
                 loss_reports = outputs['log_vars']
-                if loss > 0:
+                num_samples = outputs['num_samples']
+
+                if num_samples > 0:
                     meter.update(loss, loss_reports)
                     loss.backward()
                     optimizer.step()
                     scheduler.step(loader.nowiter)
-                else:
-                    continue
 
         # measure elapsed time
         meter.record_batch_time()
@@ -461,6 +468,7 @@ def get_dataloader(dataset, rank, world_size, config, val=False):
         config.iter_per_epoch = len(dataset.sampling_timings) // dataset.batch_size
         config.maxiter = config.iter_per_epoch * config.NUM_EPOCHS
         config.schedule[0]['range'] = (0, config.maxiter)
+        config.lrsch_params = dict( lr_lambda = CombinationV2(config.schedule, config.optim_params['lr']) )
         loader = PseudoEpochLoader(dataset=dataset, sampler=sampler, **loader_param, iter_per_epoch=config.iter_per_epoch, start_epoch=config.start_epoch)
     else:
         loader = torch.utils.data.DataLoader(dataset, sampler=sampler, **loader_param)
@@ -648,11 +656,13 @@ def parse_event_data(inputs):
 
 if __name__ == '__main__':
     '''
-    CUDA_LAUNCH_BLOCKING=0 CUDA_VISIBLE_DEVICES=0,1 python ./scripts/train.py ./config/hmnet_B3_yolox_tbptt.py --amp --distributed --overwrite
+    CUDA_LAUNCH_BLOCKING=0 CUDA_VISIBLE_DEVICES=0,1 python ./scripts/train.py ./config/hmnet_B3_yolox_tbptt.py --overwrite --amp --distributed
 
     CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox.py --overwrite
 
     CUDA_VISIBLE_DEVICES=0 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch.py --overwrite
+
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_absolute.py --overwrite
     '''
     __spec__ = None
 

@@ -45,7 +45,7 @@ timer = Timer()
 
 class HMNet(BlockBase):
     def __init__(self, latent_sizes, latent_dims, output_dims, num_heads, depth, warmup=20,
-                 cfg_embed=None, cfg_memory1=None, cfg_memory2=None, cfg_memory3=None) -> None:
+                 cfg_embed=None, cfg_memory1=None, cfg_memory2=None, cfg_memory3=None, relative_time=True) -> None:
         super().__init__()
         self.latent_dims = latent_dims   # [128, 256, 256]
         self.output_dims = output_dims   # [256, 256, 256]
@@ -59,9 +59,15 @@ class HMNet(BlockBase):
         H1, H2, H3 = num_heads         # [4, 8,  8]
         N1, N2, N3 = depth             # [1, 3,  9]
 
-        self.memory1 = LatentMemory(latent_size=L1, input_dim=D0, latent_dim=D1, output_dim=O1, num_heads=H1, update_depth=N1, message_gen=False, event_write=True,  top_down=True,  **cfg_memory1, cfg_embed=cfg_embed)
-        self.memory2 = LatentMemory(latent_size=L2, input_dim=D1, latent_dim=D2, output_dim=O2, num_heads=H2, update_depth=N2, message_gen=True,  event_write=False, top_down=True,  **cfg_memory2)
-        self.memory3 = LatentMemory(latent_size=L3, input_dim=D2, latent_dim=D3, output_dim=O3, num_heads=H3, update_depth=N3, message_gen=True,  event_write=False, top_down=False, **cfg_memory3)
+        self.memory1 = LatentMemory(latent_size=L1, input_dim=D0, latent_dim=D1, output_dim=O1, num_heads=H1, update_depth=N1, \
+                                    message_gen=False, event_write=True,  top_down=True, relative_time=relative_time, \
+                                    **cfg_memory1, cfg_embed=cfg_embed)
+        self.memory2 = LatentMemory(latent_size=L2, input_dim=D1, latent_dim=D2, output_dim=O2, num_heads=H2, update_depth=N2, \
+                                    message_gen=True,  event_write=False, top_down=True, relative_time=relative_time,  \
+                                    **cfg_memory2)
+        self.memory3 = LatentMemory(latent_size=L3, input_dim=D2, latent_dim=D3, output_dim=O3, num_heads=H3, update_depth=N3, \
+                                    message_gen=True,  event_write=False, top_down=False, relative_time=relative_time, \
+                                    **cfg_memory3)
         self.set_module_names()
 
     def init_weights(self, pretrained=None):
@@ -128,6 +134,11 @@ class HMNet(BlockBase):
             # list_events (list of list) = [Ts, 3]
 
         for time_idx, (events, images, image_metas) in enumerate(zip(list_events, list_images, list_image_metas)):
+            # keys, values, ev_q = events
+            # keys.shape = torch.Size([4927, 4, 32])
+            # values.shape = torch.Size([4927, 4, 32])
+            # ev_q.shape = torch.Size([4927])
+
             # forward one time step
             out1, out2, out3 = self._forward_one_step(events, image_metas, image_input=images, fast_training=fast_training)
             # out1.shape = torch.Size([B=7, 256, 60, 76])
@@ -201,6 +212,11 @@ class HMNet(BlockBase):
         return self._forward_one_step(events, image_metas, image_input)
 
     def _forward_one_step(self, events, image_metas, image_input=None, fast_training=False) -> Tensor:
+        # keys, values, ev_q = events
+        # keys.shape = torch.Size([4927, 4, 32])
+        # values.shape = torch.Size([4927, 4, 32])
+        # ev_q.shape = torch.Size([4927])
+
         # get event meta data
         curr_time = [ meta['curr_time_crop'] for meta in image_metas ]
         duration = [ meta['delta_t'] for meta in image_metas ]

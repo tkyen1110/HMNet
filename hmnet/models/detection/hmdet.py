@@ -111,13 +111,20 @@ class HMDet(BlockBase):
         # Backbone
         features = self.backbone(list_events, list_image_metas, gather_indices, init_states=init_states, detach=True, fast_training=True)
         # z1_out, z2_out, z3_out = features
-        # Head
-        loss, log_vars = self._forward_head(features, out_gt_bboxes, out_gt_labels, out_ignore_masks)
+        # z1_out.shape = torch.Size([len(out_image_metas), 256, 60, 76])
+        # z2_out.shape = torch.Size([len(out_image_metas), 256, 30, 38])
+        # z3_out.shape = torch.Size([len(out_image_metas), 256, 15, 19])
 
-        # Make sure all parameters are involved in loss calculation
-        loss = loss + sum([ 0. * params.sum() for params in self.parameters() ])
+        if len(out_image_metas) > 0:
+            # Head
+            loss, log_vars = self._forward_head(features, out_gt_bboxes, out_gt_labels, out_ignore_masks)
 
-        outputs = dict(loss=loss, log_vars=log_vars, num_samples=len(out_image_metas))
+            # Make sure all parameters are involved in loss calculation
+            loss = loss + sum([ 0. * params.sum() for params in self.parameters() ])
+
+            outputs = dict(loss=loss, log_vars=log_vars, num_samples=len(out_image_metas))
+        else:
+            outputs = {'loss': 0.0, 'log_vars': {'loss_cls': 0.0, 'loss_bbox': 0.0, 'loss_obj': 0.0, 'loss_iou': 0.0, 'loss': 0.0}, 'num_samples': 0}
 
         return outputs
 

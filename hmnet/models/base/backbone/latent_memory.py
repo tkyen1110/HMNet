@@ -58,12 +58,14 @@ timer = Timer()
 
 class LatentMemory(BlockBase):
     def __init__(self, latent_size: Tuple[int,int], input_dim: int, latent_dim: int, output_dim: int, num_heads: int, update_depth: int,
-                       message_gen: bool = True, event_write: bool = False, top_down: bool = True, vector_latent=False, freq=None, start_from_cycle_end=True,
+                       message_gen: bool = True, event_write: bool = False, top_down: bool = True,
+                       relative_time: bool = True, vector_latent=False, freq=None, start_from_cycle_end=True,
                        cfg_embed: dict = {}, cfg_write: dict = {}, cfg_message: dict = {}, cfg_update: dict = {}, cfg_image_write: Optional[dict] = None) -> None:
         super().__init__()
         self.event_write = event_write
         self.message_gen_enabled = message_gen
         self.top_down_enabled = top_down
+        self.relative_time = relative_time
         self.image_write_enabled = cfg_image_write is not None
         self.use_multi_process = False
         self.use_cuda_stream = False
@@ -88,7 +90,7 @@ class LatentMemory(BlockBase):
         trunc_normal_(self.init_latent, std=.02)
 
         if event_write:
-            self.embed = EventEmbedding(latent_size=latent_size, **cfg_embed)
+            self.embed = EventEmbedding(latent_size=latent_size, relative_time=relative_time, **cfg_embed)
             self.write_bottom_up = EventWrite(input_dim, latent_dim, num_heads, mlp_ratio=4, latent_size=latent_size, **cfg_write)
         else:
             self.write_bottom_up = WriteBottomUp(input_dim, latent_dim, num_heads, latent_stride, mlp_ratio=4, **cfg_write)
@@ -722,6 +724,19 @@ class WriteTopDown(BlockBase):
 
         return seq_z
 
+# cfg_message = dict(
+#     input_resize  = 'merge',
+#     latent_resize = 'none',
+#     input_proj    = True,
+#     latent_proj   = False,
+#     out_proj      = True,
+#     norm_layer    = nn.LayerNorm,
+#     drop          = 0.,
+#     window_size   = (7,7),
+#     grouping    = 'intra-window',
+#     pos_dynamic   = False,
+#     pos_log_scale = False
+# )
 class MessageGen(BlockBase):
     def __init__(self, input_dim: int, latent_dim: int, num_heads: int, latent_stride: int,
                  input_resize: str = 'merge', input_proj: bool = True, latent_resize: str = 'none', latent_proj: bool = False, out_proj : bool = True,
@@ -755,7 +770,10 @@ class MessageGen(BlockBase):
         x = self.norm_input(x)
         z = self.norm_latent(z)
 
+        # x.shape = torch.Size([B=8, 285, 256]) ; x_meta = {'shape': (B=8, 15, 19)}
+        # z.shape = torch.Size([B=8, 285, 256]) ; z_meta = {'shape': (B=8, 15, 19)}
         x = self.attn(x, z, x_meta, z_meta)
+        # x.shape = torch.Size([B=8, 285, 256])
         x = self.out_proj(x)
 
         b, h, w = x_meta['shape']
@@ -903,8 +921,9 @@ class SparseCrossAttention(BlockBase):
 #     dynamic_dim   = [32, 32, 32],
 # )
 class EventEmbedding(BlockBase):
-    def __init__(self, input_size: Tuple[int], latent_size: Tuple[int], discrete_time: bool = False, time_bins: int = 100,
-                 duration: int = 5000, dynamic: List[bool] = False, dynamic_dim: Optional[List[int]] = None, out_dim: Optional[List[int]] = None) -> None:
+    def __init__(self, input_size: Tuple[int], latent_size: Tuple[int], relative_time: bool = True, discrete_time: bool = False,
+                 time_bins: int = 100, duration: int = 5000, dynamic: List[bool] = False, dynamic_dim: Optional[List[int]] = None,
+                 out_dim: Optional[List[int]] = None) -> None:
         super().__init__()
         self.discrete_time = discrete_time
         self.time_bins = time_bins              # 100
@@ -914,15 +933,21 @@ class EventEmbedding(BlockBase):
         self.input_w = input_size[1]   # 304
         self.latent_h = latent_size[0] # 60
         self.latent_w = latent_size[1] # 76
+        self.relative_time = relative_time
 
         assert self.input_h % self.latent_h == 0
         assert self.input_w % self.latent_w == 0
         self.window_h = self.input_h // self.latent_h # 4
         self.window_w = self.input_w // self.latent_w # 4
 
-        H, W, T = self.window_h, self.window_w, time_bins # 4, 4, 100
+        H, W = self.window_h, self.window_w # 4, 4
+        if self.relative_time:
+            T = time_bins # 100
+            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=dynamic[1], dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
+        else:
+            T = 47
+            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=False, dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
         self.xy   = PositionEmbedding2D(W, H, out_dim[0], dynamic=dynamic[0], dynamic_dim=dynamic_dim[0], shift_normalize=True)
-        self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=dynamic[1], dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
         self.pol  = PositionEmbedding1D(2   , out_dim[2], dynamic=dynamic[2], dynamic_dim=dynamic_dim[2])
 
     def generate_param_table(self) -> None:
@@ -1054,7 +1079,6 @@ class EventEmbedding(BlockBase):
 
             dt, x, y, p, b = self.preproc_events(events, curr_time, duration)
             ev = torch.stack([dt, x, y, p], dim=-1)
-
             evdata.append(ev)
             batch_indices.append(b)
             split_sizes.append(len(dt))
@@ -1103,11 +1127,13 @@ class EventEmbedding(BlockBase):
         # get relative position and discretize time
         x = x % self.window_w
         y = y % self.window_h
-        if self.discrete_time:
-            dt = torch.div(dt, self.time_delta, rounding_mode='trunc')
-            #dt = (dt // self.time_delta)
-        else:
-            dt = dt / self.time_delta
+
+        if self.relative_time:
+            if self.discrete_time:
+                dt = torch.div(dt, self.time_delta, rounding_mode='trunc') # TODO: relative time
+                #dt = (dt // self.time_delta)
+            else:
+                dt = dt / self.time_delta
 
         # get embeddings
         xy_embedding = self.xy(x, y)   # shape = [L, 32]
@@ -1127,7 +1153,11 @@ class EventEmbedding(BlockBase):
                 continue
 
             t0 = curr_time[bidx] - duration[bidx]
-            evt[:,0] = evt[:,0] - t0
+            if self.relative_time:
+                evt[:,0] = evt[:,0] - t0
+            else:
+                evt[:,0] = torch.div(evt[:,0], 1000, rounding_mode='floor')
+                # evt[:,0] = evt[:,0] // 1000  # us -> ms
             b = torch.tensor([bidx] * len(evt), dtype=evt.dtype, device=evt.device).view(-1,1)
             out = torch.cat([evt, b], dim=1)
             output.append(out)

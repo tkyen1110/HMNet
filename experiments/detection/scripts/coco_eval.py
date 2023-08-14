@@ -27,10 +27,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import cv2
 import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from coco_eval_RED import CocoEvaluator
+from metavision_core.event_io.py_reader import EventDatReader
+from metavision_sdk_core import BaseFrameGenerationAlgorithm
 
 def nms(box_events, scores, iou_thresh=0.5):
     """NMS on box_events
@@ -72,8 +76,55 @@ def nms(box_events, scores, iou_thresh=0.5):
 
     return sorted(keep)
 
-def evaluate_detection(gt_boxes_list, dt_boxes_list, npy_file_list, classes=("car", "pedestrian"), height=240, width=304,
-                       time_tol=50000):
+def record_video(gt_win, dt_win, npy_file, dt_folder, event_folder, verbose=False):
+    event_file = npy_file.replace("_bbox.npy", "_td.dat")
+    event_file_path = os.path.join(event_folder, event_file)
+    video_folder = os.path.join(dt_folder, "videos")
+    os.makedirs(video_folder, exist_ok=True)
+    video_file_path = os.path.join(video_folder, npy_file.replace("_bbox.npy", ".mp4"))
+
+    event_dat = EventDatReader(event_file_path)
+    ev_height, ev_width = event_dat.get_size()
+    delta_t = 50000
+
+    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+    frame_rate = 1
+    video_writer = cv2.VideoWriter(video_file_path, fourcc, frame_rate, (ev_width*2, ev_height))
+    colors = [[0,0,255], [0,255,0]]
+
+    for gt_boxes, dt_boxes in zip(gt_win, dt_win):
+        end_time = gt_boxes['t'][0]
+        start_time = end_time - delta_t
+        event_dat.seek_time(start_time)
+        events = event_dat.load_delta_t(delta_t=delta_t)
+
+        image_all = np.zeros((ev_height, ev_width*2, 3), dtype=np.uint8)
+        BaseFrameGenerationAlgorithm.generate_frame(events, image_all[:,:ev_width, :])
+        image_all[:,ev_width:, :] = image_all[:,:ev_width, :].copy()
+
+        cv2.putText(image_all, '{} ms / {} ms'.format(start_time//1000, (end_time+1)//1000), 
+            (ev_width-200, 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(image_all, 'GT',
+                    (10, 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(image_all, 'DT',
+                    (ev_width+10, 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+        image_all = cv2.line(image_all, (ev_width,0), (ev_width,ev_height), (0,255,255), 1)
+
+        for gt_box in gt_boxes:
+            t, x, y, w, h, class_id, track_id, confidence = gt_box
+            x, y, w, h = int(x), int(y), int(w), int(h)
+            cv2.rectangle(image_all, (x, y), (x+w, y+h), colors[class_id], 1)
+
+        for dt_box in dt_boxes:
+            t, x, y, w, h, class_id, track_id, confidence = dt_box
+            if confidence > 0.0:
+                x, y, w, h = int(x), int(y), int(w), int(h)
+                cv2.rectangle(image_all, (ev_width+x, y), (ev_width+x+w, y+h), colors[class_id], 1)
+        video_writer.write(image_all)
+    video_writer.release()
+
+def evaluate_detection(gt_boxes_list, dt_boxes_list, npy_file_list, dt_folder, event_folder, 
+                       classes=("car", "pedestrian"), height=240, width=304, time_tol=50000):
     """
     Compute detection KPIs on list of boxes in the numpy format, using the COCO python API
     https://github.com/cocodataset/cocoapi
@@ -98,13 +149,15 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, npy_file_list, classes=("ca
         n_steps = len(all_ts)
 
         gt_win, dt_win = _match_times_rev(all_ts, gt_boxes, dt_boxes, time_tol)
+        record_video(gt_win, dt_win, npy_file, dt_folder, event_folder)
+
         flattened_gt = flattened_gt + gt_win
         flattened_dt = flattened_dt + dt_win
 
     return _coco_eval(flattened_gt, flattened_dt, height, width, labelmap=classes)
 
-def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, npy_file_list, classes=("car", "pedestrian"), height=240, width=304,
-                           time_tol=50000):
+def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, npy_file_list, dt_folder, event_folder,
+                           classes=("car", "pedestrian"), height=240, width=304, time_tol=50000):
     """
     Compute detection KPIs on list of boxes in the numpy format, using the COCO python API
     https://github.com/cocodataset/cocoapi

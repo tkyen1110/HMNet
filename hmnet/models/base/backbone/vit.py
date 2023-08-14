@@ -640,9 +640,9 @@ class TokenGrouping(BlockBase):
         if self.cyclic_shift:
             x = self._cyclic_shift(x)
 
-        x = self._window_partition(x)
+        x = self._window_partition(x) # x.shape = torch.Size([8 x 3 x 3, 7, 7, 256])
 
-        x = self._to_out(x, output_shape)
+        x = self._to_out(x, output_shape) # x.shape = torch.Size([8 x 3 x 3, 7 x 7, 256])
 
         return x, attn_mask
 
@@ -725,8 +725,9 @@ class TokenGrouping(BlockBase):
                 x = x.view(-1, 1, 1, C)
         else:
             if self.grouping == 'intra-window':
-                x = x.view(B, H // h, h, W // w, w, C)
-                x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, h, w, C)
+                x = x.view(B, H // h, h, W // w, w, C) # x.shape = torch.Size([8, 3, 7, 3, 7, 256])
+                # x.permute(0, 1, 3, 2, 4, 5).contiguous().shape = torch.Size([8, 3, 3, 7, 7, 256])
+                x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, h, w, C) # x.shape = torch.Size([8 x 3 x 3, 7, 7, 256])
             elif self.grouping == 'inter-window':
                 x = x.view(B, H // h, h, W // w, w, C)
                 x = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, H // h, W // w, C)
@@ -1102,9 +1103,10 @@ class CrossAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, z: Tensor, x: Tensor, z_meta: dict, x_meta: dict, z_pos: Optional[Tensor] = None, x_pos: Optional[Tensor] = None) -> Tensor:
+        # z: z2 ; x: z3
         # z.shape = torch.Size([B=8, 285, 256]) ; z_meta = {'shape': (B=8, 15, 19)}
-        z, _ = self.grouping.build(z, z_meta)
-        x, _ = self.kv_grouping.build(x, x_meta)
+        z, _ = self.grouping.build(z, z_meta)    # z.shape = torch.Size([8 x 3 x 3, 7 x 7, 256])
+        x, _ = self.kv_grouping.build(x, x_meta) # x.shape = torch.Size([8 x 3 x 3, 7 x 7, 256])
 
         B, N0, C = z.shape # z.shape = torch.Size([63, 49, 256])
         B, N1, _ = x.shape # x.shape = torch.Size([63, 49, 256])
@@ -1130,7 +1132,7 @@ class CrossAttention(nn.Module):
             attn = attn + bias
         attn = self.softmax(attn)
 
-        m = (attn @ v).transpose(1, 2).reshape(B, N0, C)
+        m = (attn @ v).transpose(1, 2).reshape(B, N0, C) # m.shape = torch.Size([63, 49, 256])
         m = self.proj(m)
         m = self.proj_drop(m)
         # m.shape = torch.Size([63, 49, 256])
@@ -1196,8 +1198,19 @@ class PositionEmbedding1D(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         if self.has_table:
-            assert self.x_size > x.max()
-            embedding = self.position_embedding_table[x.long()]
+            # assert self.x_size > x.max()
+            # embedding = self.position_embedding_table[x.long()]
+            q5 = torch.div(x.long(), 10000, rounding_mode='floor') + 40  # x.long() // 10000 + 40
+            r5 = x.long()  % 10000
+            q4 = torch.div(r5, 1000, rounding_mode='floor') + 30         # r5 // 1000 + 30
+            r4 = r5  % 1000
+            q3 = torch.div(r4, 100, rounding_mode='floor') + 20          # r4 // 100 + 20
+            r3 = r4  % 100
+            q2 = torch.div(r3, 10, rounding_mode='floor') + 10           # r3 // 10 + 10
+            q1 = r3  % 10
+            assert self.x_size > q5.max()
+            embedding = self.position_embedding_table[q5] + self.position_embedding_table[q4] + self.position_embedding_table[q3] + \
+                        self.position_embedding_table[q2] + self.position_embedding_table[q1]
         else:
             data = x.view(-1,1).float()
             if self.shift_normalize:

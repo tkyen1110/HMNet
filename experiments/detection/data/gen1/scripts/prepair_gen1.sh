@@ -55,7 +55,7 @@ train_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/train"
 val_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/val"
 test_dir="$Gen1_Automotive_dir/detection_dataset_duration_60s_ratio_1.0/test"
 
-Gen1_Automotive_HMNet_dir="/home/tkyen/opencv_practice/data/Gen1_Automotive/HMNet"
+Gen1_Automotive_HMNet_dir="/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet"
 train_evt_dir="$Gen1_Automotive_HMNet_dir/train_evt"
 val_evt_dir="$Gen1_Automotive_HMNet_dir/val_evt"
 test_evt_dir="$Gen1_Automotive_HMNet_dir/test_evt"
@@ -80,9 +80,9 @@ python ./scripts/modify_lbl_field_name.py $train_dir $train_lbl_dir
 python ./scripts/modify_lbl_field_name.py $val_dir $val_lbl_dir
 python ./scripts/modify_lbl_field_name.py $test_dir $test_lbl_dir
 
-python ./scripts/validate_bbox.py $train_lbl_dir $train_lbl_dir
-python ./scripts/validate_bbox.py $val_lbl_dir $val_lbl_dir
-python ./scripts/validate_bbox.py $test_lbl_dir $test_lbl_dir
+python ./scripts/validate_bbox_gen1.py $train_lbl_dir $train_lbl_dir
+python ./scripts/validate_bbox_gen1.py $val_lbl_dir $val_lbl_dir
+python ./scripts/validate_bbox_gen1.py $test_lbl_dir $test_lbl_dir
 
 if [ "$FLAG_M" = "TRUE" ];then
     echo "=========================================="

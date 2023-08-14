@@ -28,22 +28,65 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox_tbptt.py pretrained
-if [ $# -le 0 ];then
-    echo "Usage: $0 [1]"
-    echo "    [1]: config file"
-    exit
-fi
+import argparse
+import os
+import numpy as np
+import numpy.lib.recfunctions as rfn
 
-NAME=${1##*/}
-NAME=${NAME%.py}
+from hmnet.utils.common import get_list, mkdir
 
-dir=$(ls -d ./workspace/${NAME}/result/pred_test_$2)
-log_out=${dir}/logs
-mkdir -p ${log_out}
+WIDTH = 1280
+HEIGHT = 720
 
-python ./scripts/psee_evaluator.py \
-        /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-        ${dir} \
-        --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
-        --camera GEN1 > ${log_out}/result.txt
+def main(args):
+    mkdir(args.dpath_out)
+
+    list_fpath_lbl = get_list(args.dpath, ext='npy')
+
+    total_boxes = 0
+    total_invalid = 0
+    total_detail = []
+
+    for fpath in list_fpath_lbl:
+        boxes = np.load(fpath)
+        x1, y1, w, h = boxes['x'], boxes['y'], boxes['w'], boxes['h']
+        x2 = x1 + w
+        y2 = y1 + h
+
+        # modify
+        _x1 = x1.clip(0, WIDTH)
+        _x2 = x2.clip(0, WIDTH)
+        _y1 = y1.clip(0, HEIGHT)
+        _y2 = y2.clip(0, HEIGHT)
+        _w = _x2 - _x1
+        _h = _y2 - _y1
+
+        boxes['x'], boxes['y'], boxes['w'], boxes['h'] = _x1, _y1, _w, _h # TK
+        invalid = (_w <= 0) | (_h <= 0) | (_w == WIDTH) | (_h == HEIGHT)
+
+        n1 = invalid.sum()
+        total_invalid += n1
+        total_boxes += len(boxes)
+
+        if 'invalid' in boxes.dtype.names: # TK
+            assert np.sum(boxes['invalid'] != invalid)==0
+        else:
+            boxes = rfn.append_fields(boxes, 'invalid', invalid, usemask=False)
+            fname = fpath.split('/')[-1]
+            fpath_out = f'{args.dpath_out}/{fname}'
+            np.save(fpath_out, boxes)
+
+    p = total_invalid / total_boxes * 100
+    print('')
+    print(args.dpath)
+    print('='*50)
+    print(f'Total: {total_invalid}/{total_boxes} ({p:.2f})')
+    print('')
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dpath', type=str, help='')
+    parser.add_argument('dpath_out', type=str, help='')
+    args = parser.parse_args()
+    main(args)
+
