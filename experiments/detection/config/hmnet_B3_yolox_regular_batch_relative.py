@@ -261,7 +261,7 @@ class TrainSettings(object):
 
     # ======== other settings ========
     resume      = ''
-    print_freq  = 10
+    print_freq  = 100
     fpath_script= sys.argv[0]
 
 

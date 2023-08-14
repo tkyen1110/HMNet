@@ -211,6 +211,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
                 num_samples = outputs['num_samples']
 
                 if num_samples > 0:
+                    print(outputs)
                     meter.update(loss, loss_reports)
                     scale_before_step = scaler.get_scale()
                     scaler.scale(loss).backward()
@@ -226,6 +227,7 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
                 num_samples = outputs['num_samples']
 
                 if num_samples > 0:
+                    print(outputs)
                     meter.update(loss, loss_reports)
                     loss.backward()
                     optimizer.step()
