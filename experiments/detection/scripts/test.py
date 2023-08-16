@@ -96,7 +96,8 @@ def main(config):
         assert os.path.basename(fpath_evt).replace("_td.npy", "")==os.path.basename(fpath_lbl).replace("_bbox.npy", "")
 
         # get dataset
-        dataset = config.get_dataset(fpath_evt, fpath_lbl, config.fpath_meta, config.fpath_gt_duration, config.data_root, fast_mode=config.fast)
+        dataset = config.get_dataset(fpath_evt, fpath_lbl, config.fpath_meta, config.fpath_gt_duration, 
+                                     config.data_root, fast_mode=config.fast, batch_size=config.batch_size)
         loader = torch.utils.data.DataLoader(dataset,
                                              shuffle=False,
                                              pin_memory=True,

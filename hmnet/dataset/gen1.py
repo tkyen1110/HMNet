@@ -232,7 +232,7 @@ class EventPacket(data.Dataset):
         st, ed = ev_range
         events = npy[st:ed]
         events = np.array(events)
-        events['p'] = (events['p'] - 0.5) * 2
+        events['p'] = (events['p'] - 0.5) * 2 # [0, 1] -> [-1, 1]
 
         # labels = self._load_label_delta_t(fpath_lbl, time, duration+gt_duration) # TKYen commented
         labels = self._load_label_delta_t(fpath_lbl, time, duration) # TKYen
@@ -682,6 +682,7 @@ class EventPacketStream(EventPacket):
         #                  {...},
         #                  {...},...
         #                ]
+
         return data_streams, target_streams, meta_streams
 
     def merge_streams(self, event_streams, label_streams, meta_streams, delta_t, stride_t):

@@ -1157,13 +1157,14 @@ def get_relative_position_indices(window1: Tuple[int], window2: Tuple[int]) -> T
 
 class PositionEmbedding1D(nn.Module):
     def __init__(self, x_size: int, embed_dim: int, dynamic: bool = False, dynamic_dim: Optional[int] = None,
-                       shift_normalize: bool = False, scale_normalize: bool = False, log_scale: bool = False) -> None:
+                       shift_normalize: bool = False, scale_normalize: bool = False, log_scale: bool = False, print_time: bool = False) -> None:
         super().__init__()
         self.x_size = x_size
         self.dynamic = dynamic
         self.shift_normalize = shift_normalize
         self.scale_normalize = scale_normalize
         self.log_scale = log_scale
+        self.print_time = print_time
 
         if dynamic:
             self.embed = nn.Sequential(
@@ -1196,22 +1197,30 @@ class PositionEmbedding1D(nn.Module):
             self.position_embedding_table = nn.Parameter(table.detach())
             self.has_table = True
 
+    def absolute_time_to_position_embedding_index(self, x: Tensor):
+        if self.print_time:
+            print("absolute_time", torch.min(x).item(), torch.max(x).item())
+        q5 = torch.div(x.long(), 10000, rounding_mode='floor') + 40  # x.long() // 10000 + 40
+        r5 = x.long()  % 10000
+        q4 = torch.div(r5, 1000, rounding_mode='floor') + 30         # r5 // 1000 + 30
+        r4 = r5  % 1000
+        q3 = torch.div(r4, 100, rounding_mode='floor') + 20          # r4 // 100 + 20
+        r3 = r4  % 100
+        q2 = torch.div(r3, 10, rounding_mode='floor') + 10           # r3 // 10 + 10
+        q1 = r3  % 10
+        return q5, q4, q3, q2, q1
+
     def forward(self, x: Tensor) -> Tensor:
         if self.has_table:
             # assert self.x_size > x.max()
             # embedding = self.position_embedding_table[x.long()]
-            q5 = torch.div(x.long(), 10000, rounding_mode='floor') + 40  # x.long() // 10000 + 40
-            r5 = x.long()  % 10000
-            q4 = torch.div(r5, 1000, rounding_mode='floor') + 30         # r5 // 1000 + 30
-            r4 = r5  % 1000
-            q3 = torch.div(r4, 100, rounding_mode='floor') + 20          # r4 // 100 + 20
-            r3 = r4  % 100
-            q2 = torch.div(r3, 10, rounding_mode='floor') + 10           # r3 // 10 + 10
-            q1 = r3  % 10
+            q5, q4, q3, q2, q1 = self.absolute_time_to_position_embedding_index(x)
             assert self.x_size > q5.max()
             embedding = self.position_embedding_table[q5] + self.position_embedding_table[q4] + self.position_embedding_table[q3] + \
                         self.position_embedding_table[q2] + self.position_embedding_table[q1]
         else:
+            if self.print_time:
+                print("relative_time", torch.min(x).item(), torch.max(x).item())
             data = x.view(-1,1).float()
             if self.shift_normalize:
                 data = data - self.x_size * 0.5

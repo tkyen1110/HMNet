@@ -107,9 +107,9 @@ if [ "$FLAG_M" = "TRUE" ];then
     val_meta_dir="$Gen1_Automotive_HMNet_dir/val_meta"
     test_meta_dir="$Gen1_Automotive_HMNet_dir/test_meta"
 
-    python ./scripts/make_event_meta.py $train_evt_dir $train_meta_dir
-    python ./scripts/make_event_meta.py $val_evt_dir $val_meta_dir
-    python ./scripts/make_event_meta.py $test_evt_dir $test_meta_dir
+    python ./scripts/make_event_meta_gen1.py $train_evt_dir $train_meta_dir
+    python ./scripts/make_event_meta_gen1.py $val_evt_dir $val_meta_dir
+    python ./scripts/make_event_meta_gen1.py $test_evt_dir $test_meta_dir
 
     python ./scripts/merge_meta.py $train_meta_dir $train_list_dir
     python ./scripts/merge_meta.py $val_meta_dir $val_list_dir

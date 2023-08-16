@@ -72,9 +72,9 @@ mkdir -p $train_lbl_dir
 mkdir -p $val_lbl_dir
 mkdir -p $test_lbl_dir
 
-python ./scripts/preproc_events.py $train_dir $train_evt_dir
-python ./scripts/preproc_events.py $val_dir $val_evt_dir
-python ./scripts/preproc_events.py $test_dir $test_evt_dir
+ln -s $train_dir $train_evt_dir
+ln -s $val_dir $val_evt_dir
+ln -s $test_dir $test_evt_dir
 
 python ./scripts/modify_lbl_field_name.py $train_dir $train_lbl_dir
 python ./scripts/modify_lbl_field_name.py $val_dir $val_lbl_dir
@@ -96,20 +96,20 @@ if [ "$FLAG_M" = "TRUE" ];then
     mkdir -p $val_list_dir
     mkdir -p $test_list_dir
 
-    ls $train_evt_dir/*.npy > $train_list_dir/events.txt
+    ls $train_evt_dir/*.dat > $train_list_dir/events.txt
     ls $train_lbl_dir/*.npy > $train_list_dir/labels.txt
-    ls $val_evt_dir/*.npy > $val_list_dir/events.txt
+    ls $val_evt_dir/*.dat > $val_list_dir/events.txt
     ls $val_lbl_dir/*.npy > $val_list_dir/labels.txt
-    ls $test_evt_dir/*.npy > $test_list_dir/events.txt
+    ls $test_evt_dir/*.dat > $test_list_dir/events.txt
     ls $test_lbl_dir/*.npy > $test_list_dir/labels.txt
 
     train_meta_dir="$Gen4_Automotive_HMNet_dir/train_meta"
     val_meta_dir="$Gen4_Automotive_HMNet_dir/val_meta"
     test_meta_dir="$Gen4_Automotive_HMNet_dir/test_meta"
 
-    python ./scripts/make_event_meta.py $train_evt_dir $train_meta_dir
-    python ./scripts/make_event_meta.py $val_evt_dir $val_meta_dir
-    python ./scripts/make_event_meta.py $test_evt_dir $test_meta_dir
+    python ./scripts/make_event_meta_gen4.py $train_evt_dir $train_meta_dir
+    python ./scripts/make_event_meta_gen4.py $val_evt_dir $val_meta_dir
+    python ./scripts/make_event_meta_gen4.py $test_evt_dir $test_meta_dir
 
     python ./scripts/merge_meta.py $train_meta_dir $train_list_dir
     python ./scripts/merge_meta.py $val_meta_dir $val_list_dir

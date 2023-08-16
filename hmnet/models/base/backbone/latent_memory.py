@@ -934,6 +934,7 @@ class EventEmbedding(BlockBase):
         self.latent_h = latent_size[0] # 60
         self.latent_w = latent_size[1] # 76
         self.relative_time = relative_time
+        self.print_time = False
 
         assert self.input_h % self.latent_h == 0
         assert self.input_w % self.latent_w == 0
@@ -943,12 +944,14 @@ class EventEmbedding(BlockBase):
         H, W = self.window_h, self.window_w # 4, 4
         if self.relative_time:
             T = time_bins # 100
-            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=dynamic[1], dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
+            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=dynamic[1], dynamic_dim=dynamic_dim[1], shift_normalize=True, 
+                                            scale_normalize=True, print_time=self.print_time)
         else:
             T = 47
-            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=False, dynamic_dim=dynamic_dim[1], shift_normalize=True, scale_normalize=True)
+            self.time = PositionEmbedding1D(T   , out_dim[1], dynamic=False, dynamic_dim=dynamic_dim[1], shift_normalize=True, 
+                                            scale_normalize=True, print_time=self.print_time)
         self.xy   = PositionEmbedding2D(W, H, out_dim[0], dynamic=dynamic[0], dynamic_dim=dynamic_dim[0], shift_normalize=True)
-        self.pol  = PositionEmbedding1D(2   , out_dim[2], dynamic=dynamic[2], dynamic_dim=dynamic_dim[2])
+        self.pol  = PositionEmbedding1D(2   , out_dim[2], dynamic=dynamic[2], dynamic_dim=dynamic_dim[2], print_time=False)
 
     def generate_param_table(self) -> None:
         self.xy.generate_param_table()
@@ -962,9 +965,6 @@ class EventEmbedding(BlockBase):
         t, x, y, p = events[:,0], events[:,1], events[:,2], events[:,3]
         device = x.device
 
-        t0 = curr_time - duration
-        dt = t - t0
-
         # window indices
         #wx = x // self.window_w
         #wy = y // self.window_h
@@ -975,11 +975,16 @@ class EventEmbedding(BlockBase):
         # get relative position and discretize time
         x = x % self.window_w
         y = y % self.window_h
-        if self.discrete_time:
-            #dt = (dt // int(self.time_delta))
-            dt = torch.div(dt, int(self.time_delta), rounding_mode='trunc')
+
+        if self.relative_time:
+            t0 = curr_time - duration
+            dt = t - t0
+            if self.discrete_time:
+                dt = torch.div(dt, int(self.time_delta), rounding_mode='trunc')
+            else:
+                dt = dt / self.time_delta
         else:
-            dt = dt / self.time_delta
+            dt = torch.div(t, 1000, rounding_mode='floor')
 
         # get embeddings
         xy_embedding = self.xy(x, y)
@@ -999,9 +1004,6 @@ class EventEmbedding(BlockBase):
         t, x, y, p = events[:,0], events[:,1], events[:,2], events[:,3]
         device = x.device
 
-        t0 = curr_time - duration
-        dt = t - t0
-
         # window indices
         wx = torch.div(x, self.window_w, rounding_mode='trunc')
         wy = torch.div(y, self.window_h, rounding_mode='trunc')
@@ -1010,11 +1012,26 @@ class EventEmbedding(BlockBase):
         # get relative position and discretize time
         x = x % self.window_w
         y = y % self.window_h
-        dt = torch.div(dt, int(self.time_delta), rounding_mode='trunc')
 
-        # get embeddings
-        key = self.key_table[dt,x,y,p]
-        value = self.value_table[dt,x,y,p]
+        if self.relative_time:
+            t0 = curr_time - duration
+            dt = t - t0
+            dt = torch.div(dt, int(self.time_delta), rounding_mode='trunc')
+
+            # get embeddings
+            key = self.key_table[dt,x,y,p]
+            value = self.value_table[dt,x,y,p]
+            if self.print_time:
+                print("relative_time", torch.min(dt).item(), torch.max(dt).item())
+        else:
+            dt = torch.div(t, 1000, rounding_mode='floor')
+            q5, q4, q3, q2, q1 = self.time.absolute_time_to_position_embedding_index(dt)
+
+            # get embeddings
+            key = self.key_table[q5,x,y,p] + self.key_table[q4,x,y,p] + self.key_table[q3,x,y,p] + \
+                  self.key_table[q2,x,y,p] + self.key_table[q1,x,y,p]
+            value = self.value_table[q5,x,y,p] + self.value_table[q4,x,y,p] + self.value_table[q3,x,y,p] + \
+                    self.value_table[q2,x,y,p] + self.value_table[q1,x,y,p]
 
         return key, value, indices    # (L, C1+C2+C3), (L,)
 
@@ -1036,12 +1053,12 @@ class EventEmbedding(BlockBase):
         xy_embedding = self.xy(x.reshape(-1), y.reshape(-1))
         time_embedding = self.time(t.reshape(-1))
         pol_embedding = self.pol(p.reshape(-1))
-        embeddings = torch.cat([xy_embedding, time_embedding, pol_embedding], dim=1)
+        embeddings = torch.cat([xy_embedding, time_embedding, pol_embedding], dim=1) # shape = torch.Size([L, 96])
 
         H = write_bottom_up.attn.num_heads
         C = latent_dim
         embeddings = write_bottom_up.norm_input(embeddings)
-        kv = write_bottom_up.attn.kv(embeddings).view(-1, 2, H, C // H).permute(1,0,2,3).contiguous()
+        kv = write_bottom_up.attn.kv(embeddings).view(-1, 2, H, C // H).permute(1,0,2,3).contiguous() # shape = torch.Size([2, L, 4, 32])
         key, value = kv[0], kv[1]    # (L, H, C')
 
         self.key_table = key.view(t_size, x_size, y_size, p_size, H, -1)
@@ -1152,8 +1169,8 @@ class EventEmbedding(BlockBase):
                 output.append(torch.empty(0,5, dtype=evt.dtype, device=evt.device))
                 continue
 
-            t0 = curr_time[bidx] - duration[bidx]
             if self.relative_time:
+                t0 = curr_time[bidx] - duration[bidx]
                 evt[:,0] = evt[:,0] - t0
             else:
                 evt[:,0] = torch.div(evt[:,0], 1000, rounding_mode='floor')

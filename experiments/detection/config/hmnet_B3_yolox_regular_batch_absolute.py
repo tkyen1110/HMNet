@@ -272,10 +272,10 @@ class TestSettings(object):
             d = torch.device('cuda:0')
             devices = [d, d, d, d]
 
-        test_transform = Compose([
-            Padding(size=INPUT_SIZE, halign='center', valign='center', const_image=0, const_mask=-1, padding_mode='constant'),
-        ])
-
+        # test_transform = Compose([
+        #     Padding(size=INPUT_SIZE, halign='center', valign='center', const_image=0, const_mask=-1, padding_mode='constant'),
+        # ])
+        test_transform = None
         model = HMDet(backbone, neck, head, devices=devices, test_aug=test_transform)
         model.init_weights()
 
