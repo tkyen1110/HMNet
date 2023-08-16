@@ -95,6 +95,11 @@ def main(config):
     for fpath_evt, fpath_lbl in zip(list_fpath_evt, list_fpath_lbl):
         assert os.path.basename(fpath_evt).replace("_td.npy", "")==os.path.basename(fpath_lbl).replace("_bbox.npy", "")
 
+        fpath_out = f"{config.dpath_out}/{fpath_evt.split('/')[-1].replace('_td', '_bbox')}"
+        if os.path.exists(fpath_out):
+            print("[Exist] ", fpath_out)
+            continue
+
         # get dataset
         dataset = config.get_dataset(fpath_evt, fpath_lbl, config.fpath_meta, config.fpath_gt_duration, 
                                      config.data_root, fast_mode=config.fast, batch_size=config.batch_size)
@@ -139,7 +144,7 @@ def main(config):
 
         results = rfn.stack_arrays(results, usemask=False)
         print(f'\nwriting results')
-        np.save(f"{config.dpath_out}/{fpath_evt.split('/')[-1].replace('_td', '_bbox')}", results) # TK
+        np.save(fpath_out, results) # TK
 
 
 def backward_transform(list_bbox_dict, img_metas, transform):
@@ -216,11 +221,14 @@ def get_config(args):
     config_module = machinery.SourceFileLoader('config', args.config).load_module()
     config = config_module.TestSettings()
 
-    config.fpath_evt_lst = f'{args.data_list}/events.txt'
-    config.fpath_lbl_lst = f'{args.data_list}/labels.txt'
-    config.fpath_meta    = f'{args.data_list}/meta.pkl'
-    config.fpath_gt_duration = f'{args.data_list}/gt_interval.csv'
-    config.data_root = args.data_root
+    config.data_root = config_module.HMNet_dataset
+    config.data_list = os.path.join(config.data_root, "list/test")
+    print("data_list: ", config.data_list)
+    print("data_root: ", config.data_root)
+    config.fpath_evt_lst = f'{config.data_list}/events.txt'
+    config.fpath_lbl_lst = f'{config.data_list}/labels.txt'
+    config.fpath_meta    = f'{config.data_list}/meta.pkl'
+    config.fpath_gt_duration = f'{config.data_list}/gt_interval.csv'
 
     config.cpu = args.cpu
     config.gpuid = args.gpuid
@@ -240,7 +248,7 @@ def get_config(args):
         batch_num = os.path.basename(config.pretrained).split('.')[0].split('_')[1]
 
     name = args.config.split('/')[-1].replace('.py', '')
-    dirname = get_dirname(args.data_list)
+    dirname = get_dirname(config.data_list)
     config.dpath_work = f'./workspace/{name}'
     config.dpath_out = f'./workspace/{name}/result/pred_{dirname}_{batch_num}'
 
@@ -253,16 +261,27 @@ def get_dirname(path):
 
 if __name__ == '__main__':
     '''
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
+      --pretrained ./pretrained/gen1_hmnet_B3_tbptt.pth --fast --speed_test
+
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py \
+      --fast --speed_test
+
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_absolute.py \
+      --fast --speed_test
+    '''
+
+    '''
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet \
       --pretrained ./pretrained/gen1_hmnet_B3_tbptt.pth --fast --speed_test
 
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py \
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
 
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_absolute.py \
+    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_absolute.py \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/list/test \
       /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet --fast --speed_test
     '''
@@ -270,8 +289,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str, help='Config file')
-    parser.add_argument('data_list', type=str, help='Path for directory containing file lists for testing')
-    parser.add_argument('data_root', type=str, help='Path for dataset root directory')
+    # parser.add_argument('data_list', type=str, help='Path for directory containing file lists for testing')
+    # parser.add_argument('data_root', type=str, help='Path for dataset root directory')
     parser.add_argument('--mode', type=str, default='single_process', choices=('single_process', 'multi_process', 'cuda_stream'), help='')
     parser.add_argument('--speed_test', action='store_true', help='Measure inference time')
     parser.add_argument('--name', type=str, default=None, help='Name of the model. (default value is set by this script name)')

@@ -27,7 +27,7 @@
 # LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+import os
 import argparse
 import numpy as np
 from hmnet.utils.common import get_list, get_chunk, mkdir
@@ -40,13 +40,18 @@ def main(args):
     list_fpath = get_chunk(list_fpath, chunk_str=args.split)
 
     for fpath in list_fpath:
+        fpath_out = dpath_out + '/' + fpath.split('/')[-1]
+        if os.path.exists(fpath_out):
+            print("[Exist] ", fpath_out)
+            continue
+
         data = np.load(fpath)
         output = np.zeros([60000,2])
         segment_indices = data['t'] // 1000
         seg_idx, pos, count = np.unique(segment_indices, return_index=True, return_counts=True)
         output[seg_idx] = np.stack([pos, count], axis=1)
         output[:,0] = pad_index(output[:,0], output[:,1])
-        fpath_out = dpath_out + '/' + fpath.split('/')[-1]
+
         np.save(fpath_out, output)
         print(fpath_out)
         print('N_seg: ', len(seg_idx))

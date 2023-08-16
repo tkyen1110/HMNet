@@ -177,6 +177,14 @@ head = dict(
     ignore_bboxes_as_negative = True,
 )
 
+HMNet_dataset = None
+HMNet_dataset_list = [  '/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet',
+                        '/tmp2/tkyen/Gen1_Automotive/HMNet',
+                        '/tmp3/tkyen/Gen1_Automotive/HMNet']
+for dataset in HMNet_dataset_list:
+    if os.path.isdir(dataset):
+        HMNet_dataset = dataset
+        break
 
 class TrainSettings(object):
     # ======== train data settings ========
@@ -188,7 +196,7 @@ class TrainSettings(object):
         #     RandomFlip(prob=0.5, direction='H'),
         # ])
         train_transform = None # TKYen
-        HMNet_dataset = '/home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet'
+
         train_dataset = EventPacketStream(
             fpath_evt_lst      = os.path.join(HMNet_dataset, 'list/train/events.txt'),
             fpath_lbl_lst      = os.path.join(HMNet_dataset, 'list/train/labels.txt'),

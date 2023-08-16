@@ -41,12 +41,11 @@ def main(args):
     list_fpath = get_chunk(list_fpath, chunk_str=args.split)
 
     for fpath in list_fpath:
-        '''
         fpath_out = dpath_out + '/' + fpath.split('/')[-1].replace('.dat', '.npy')
         if os.path.exists(fpath_out):
-            print(fpath_out)
+            print("[Exist] ", fpath_out)
             continue
-        '''
+
         data = load_td_data(fpath)
         t = data['t'].astype(int)
         diff = t[1:] - t[:-1]
@@ -60,7 +59,7 @@ def main(args):
         seg_idx, pos, count = np.unique(segment_indices, return_index=True, return_counts=True)
         output[seg_idx] = np.stack([pos, count], axis=1)
         output[:,0] = pad_index(output[:,0], output[:,1])
-        fpath_out = dpath_out + '/' + fpath.split('/')[-1].replace('.dat', '.npy')
+
         np.save(fpath_out, output)
         print(fpath_out)
         print('N_seg: ', len(seg_idx))
