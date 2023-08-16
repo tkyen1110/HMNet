@@ -242,6 +242,9 @@ def get_config(args):
     config.speed_test = args.speed_test
     config.mode = args.mode
 
+    if args.checkpoint is not None:
+        config.checkpoint = args.checkpoint
+
     if config.pretrained is None:
         batch_num = config.checkpoint.split('.')[0].split('_')[1]
     else:
@@ -265,10 +268,10 @@ if __name__ == '__main__':
       --pretrained ./pretrained/gen1_hmnet_B3_tbptt.pth --fast --speed_test
 
     CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py \
-      --fast --speed_test
+      --checkpoint checkpoint_3.pth.tar --fast --speed_test
 
     CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_absolute.py \
-      --fast --speed_test
+      --checkpoint checkpoint_3.pth.tar --fast --speed_test
     '''
 
     '''
@@ -297,6 +300,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpuid', type=str, default=0, help='GPU ID')
     parser.add_argument('--cpu', action='store_true', help='Run in CPU mode')
     parser.add_argument('--test_chunks', type=str, default='1/1', help='"{CHUNK_ID}/{NUM_CHUNKS}": Split test data into NUM_CHUNKS and run inference on a specified CHUNK_ID.')
+    parser.add_argument('--checkpoint', type=str, help='Path for the checkpoint file)')
     parser.add_argument('--pretrained', type=str, help='Path for the pretrained weight (checkpoint file in workspace will be loaded by default)')
     parser.add_argument('--random_init', action='store_true', help='Run without pretrained weights')
     parser.add_argument('--devices', type=int, nargs='*', help='')
