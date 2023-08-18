@@ -29,6 +29,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox_tbptt.py pretrained
+# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox_regular_batch_relative.py 3
+# sh ./scripts/run_eval.sh ./config/hmnet_B3_yolox_regular_batch_absolute.py 3
+
 if [ $# -le 0 ];then
     echo "Usage: $0 [1]"
     echo "    [1]: config file"
@@ -38,12 +41,35 @@ fi
 NAME=${1##*/}
 NAME=${NAME%.py}
 
-dir=$(ls -d ./workspace/${NAME}/result/pred_test_$2)
-log_out=${dir}/logs
+test_dt_dir=$(ls -d ./workspace/${NAME}/result/pred_test_$2)
+log_out=${test_dt_dir}/logs
 mkdir -p ${log_out}
 
+
+if [ -d "/home/tkyen/opencv_practice/data_1/Gen4_Automotive/HMNet" ]
+then
+    Gen4_Automotive_HMNet_dir="/home/tkyen/opencv_practice/data_1/Gen4_Automotive/HMNet"
+elif [ -d "/tmp2/tkyen/Gen1_Automotive/HMNet" ]
+then
+    Gen4_Automotive_HMNet_dir="/tmp2/tkyen/Gen1_Automotive/HMNet"
+elif [ -d "/tmp3/tkyen/Gen1_Automotive/HMNet" ]
+then
+    Gen4_Automotive_HMNet_dir="/tmp3/tkyen/Gen1_Automotive/HMNet"
+else
+    Gen4_Automotive_HMNet_dir=""
+fi
+
+if [ -z "$Gen4_Automotive_HMNet_dir" ]
+then
+    echo "\$Gen4_Automotive_HMNet_dir is NULL"
+    exit
+fi
+test_gt_dir="$Gen4_Automotive_HMNet_dir/test_lbl"
+
 python ./scripts/psee_evaluator.py \
-        /home/tkyen/opencv_practice/data_1/Gen1_Automotive/HMNet/test_lbl \
-        ${dir} \
-        --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+        ${test_gt_dir} \
+        ${test_dt_dir} \
         --camera GEN1 > ${log_out}/result.txt
+
+        # --event_folder /tmp2/tkyen/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
+        

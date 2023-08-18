@@ -33,8 +33,13 @@ import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from coco_eval_RED import CocoEvaluator
-from metavision_core.event_io.py_reader import EventDatReader
-from metavision_sdk_core import BaseFrameGenerationAlgorithm
+try:
+    from metavision_core.event_io.py_reader import EventDatReader
+    from metavision_sdk_core import BaseFrameGenerationAlgorithm
+    record = True
+except ModuleNotFoundError as err:
+    print(err)
+    record = False
 
 def nms(box_events, scores, iou_thresh=0.5):
     """NMS on box_events
@@ -149,7 +154,8 @@ def evaluate_detection(gt_boxes_list, dt_boxes_list, npy_file_list, dt_folder, e
         n_steps = len(all_ts)
 
         gt_win, dt_win = _match_times_rev(all_ts, gt_boxes, dt_boxes, time_tol)
-        record_video(gt_win, dt_win, npy_file, dt_folder, event_folder)
+        if event_folder != None and record:
+            record_video(gt_win, dt_win, npy_file, dt_folder, event_folder)
 
         flattened_gt = flattened_gt + gt_win
         flattened_dt = flattened_dt + dt_win
@@ -183,6 +189,8 @@ def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, npy_file_list, dt_folde
         n_steps = len(all_ts)
 
         gt_win, dt_win = _match_times_rev(all_ts, gt_boxes, dt_boxes, time_tol)
+        if event_folder != None and record:
+            record_video(gt_win, dt_win, npy_file, dt_folder, event_folder)
         flattened_gt = flattened_gt + gt_win
         flattened_dt = flattened_dt + dt_win
 
