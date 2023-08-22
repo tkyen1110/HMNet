@@ -46,6 +46,7 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
 import torch.multiprocessing as mp
+from torch.utils.data import Sampler
 
 from hmnet.models.base.init import load_state_dict_matched
 from hmnet.utils.common import makedirs, fix_seed, split_list, MovingAverageMeter
@@ -164,7 +165,10 @@ def train(epoch, loader, model, optimizer, scheduler, scaler, rank, config):
 
         '''
         print(batch_idx, list_image_metas[0][0]['ori_filename'], list_image_metas[0][0]['curr_time_org'], list_image_metas[0][0]['curr_time_crop'])
-        print(list_events[0][0][0][0], list_events[0][0][-1][0])
+        try:
+            print(list_events[0][0][0][0], list_events[0][0][-1][0])
+        except:
+            print(list_events[0][0])
         init_states_bool = np.empty(len(list_events[0]), dtype=bool)
         for count, (events, image_metas) in enumerate(zip(list_events, list_image_metas)):
             for i, image_meta in enumerate(image_metas):
@@ -444,6 +448,36 @@ def set_optimizer(model, config):
 
     return optimizer, scheduler, scaler
 
+
+class SubsetRandomSampler(Sampler):
+    r"""Samples elements randomly from a given list of indices, without replacement.
+    Arguments:
+        indices (sequence): a sequence of indices
+    """
+    def __init__(self, num_videos, num_frames, batch_size):
+        self.num_videos = num_videos
+        self.num_frames = num_frames
+        self.batch_size = batch_size
+        self.num_res = self.num_videos % self.batch_size
+        if self.num_res > 0:
+            self.num_append = self.batch_size - self.num_res
+        else:
+            self.num_append = 0
+
+    def __iter__(self):
+        video_indices = torch.randperm(self.num_videos) * self.num_frames
+        frame_indices = torch.stack([torch.arange(i, i+self.num_frames) for i in video_indices], dim=0)
+        if self.num_append > 0:
+            append_indices = torch.randperm(self.num_videos-self.num_res)[:self.num_append]
+            frame_indices = torch.cat((frame_indices, frame_indices[append_indices]), dim=0)
+        frame_indices_list = torch.split(frame_indices, self.batch_size)
+        frame_indices_list = [torch.ravel(torch.transpose(frame_indices, 0, 1)) for frame_indices in frame_indices_list]
+
+        return iter((torch.cat(frame_indices_list)).tolist())
+
+    def __len__(self):
+        return (self.num_videos + self.num_append) * self.num_frames
+
 def get_dataloader(dataset, rank, world_size, config, val=False):
     if dataset is None:
         return None
@@ -453,15 +487,22 @@ def get_dataloader(dataset, rank, world_size, config, val=False):
     if val == True:
         loader_param['drop_last'] = False
 
-    if config.distributed:
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset, rank=rank, num_replicas=world_size, shuffle=loader_param.pop('shuffle'))
-        loader_param['shuffle'] = False
-        loader_param['pin_memory'] = False
-        loader_param['num_workers'] = 4
-        loader_param['drop_last'] = True
-        loader_param['batch_size'] = int(loader_param['batch_size'] / world_size)
+    print("dataset.sampling = {}".format(dataset.sampling))
+    if dataset.sampling == 'regular_batch':
+        print("sampler = SubsetRandomSampler")
+        sampler = SubsetRandomSampler(dataset.num_videos, dataset.num_frames, dataset.batch_size)
     else:
-        sampler = None
+        if config.distributed:
+            print("sampler = DistributedSampler")
+            sampler = torch.utils.data.distributed.DistributedSampler(dataset, rank=rank, num_replicas=world_size, shuffle=loader_param.pop('shuffle'))
+            loader_param['shuffle'] = False
+            loader_param['pin_memory'] = False
+            loader_param['num_workers'] = 4
+            loader_param['drop_last'] = True
+            loader_param['batch_size'] = int(loader_param['batch_size'] / world_size)
+        else:
+            print("sampler = None")
+            sampler = None
 
     if val == True:
         config.loader_param['drop_last'] = False
@@ -662,9 +703,9 @@ if __name__ == '__main__':
 
     CUDA_VISIBLE_DEVICES=0,1 python ./scripts/train.py ./config/hmnet_B3_yolox_tbptt.py --overwrite --amp --distributed
 
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_relative.py --overwrite --amp --distributed
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_relative.py --overwrite --amp
 
-    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_absolute.py --overwrite --amp --distributed
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/train.py ./config/hmnet_B3_yolox_regular_batch_absolute.py --overwrite --amp
     '''
     __spec__ = None
 

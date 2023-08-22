@@ -129,13 +129,13 @@ class EventPacket(data.Dataset):
             seg_duration = int(self.video_duration // 1000) # 60000 ms
             for ifile in range(len(self.list_fpath_evt)):
                 self.sampling_timings += [ (ifile, seg_index) for seg_index in range(0,seg_duration,seg_stride) ]
-
+            '''
             if sampling == 'regular_batch' and len(self.list_fpath_evt) % batch_size != 0:
                 append_num = batch_size - len(self.list_fpath_evt) % batch_size
                 append_ifiles = np.random.randint(len(self.list_fpath_evt), size=append_num)
                 for ifile in append_ifiles:
                     self.sampling_timings += [ (ifile, seg_index) for seg_index in range(0,seg_duration,seg_stride) ]
-
+            '''
             self.total_seq = len(self.sampling_timings)
         elif sampling == 'random':
             sampling_stride = sampling_stride if sampling_stride > 0 else train_duration
@@ -546,6 +546,8 @@ class EventPacketStream(EventPacket):
         self.video_duration = kwargs['video_duration'] # 60e6 us
         self.train_duration = kwargs['train_duration'] # 200e3 us
         self.batch_size = kwargs['batch_size']
+        self.num_frames     = int(self.video_duration // self.train_duration) # 300
+        self.num_videos     = int(self.total_seq // self.num_frames)
 
         if self.relative_time:
             self.init_states = True
@@ -554,21 +556,27 @@ class EventPacketStream(EventPacket):
 
     def __getitem__(self, index):
         if self.sampling == 'regular_batch':
-            num_frames     = int(self.video_duration / self.train_duration)
-            batch_index    = index // (self.batch_size * num_frames)
-            batch_residual = index  % (self.batch_size * num_frames)
+            '''
+            batch_index    = index // (self.batch_size * self.num_frames)
+            batch_residual = index  % (self.batch_size * self.num_frames)
             seg_index =  batch_residual % self.batch_size
             time_index = (batch_residual - seg_index) // self.batch_size
-            new_index = batch_index * (self.batch_size * num_frames) + seg_index * num_frames + time_index
+            new_index = batch_index * (self.batch_size * self.num_frames) + seg_index * self.num_frames + time_index
             event_dict, bbox_dict, meta_data = self.getdata(new_index, keep_latest_labels=False, skip_ts=self.skip_ts,
                                                             relative_time = self.relative_time)
             if time_index == 0:
                 self.init_states = True
             else:
                 self.init_states = False
-        else:
-            event_dict, bbox_dict, meta_data = self.getdata(index, keep_latest_labels=False, skip_ts=self.skip_ts,
-                                                            relative_time = self.relative_time)
+            '''
+            if index % self.num_frames == 0:
+                self.init_states = True
+            else:
+                self.init_states = False
+
+        event_dict, bbox_dict, meta_data = self.getdata(index, keep_latest_labels=False, skip_ts=self.skip_ts,
+                                                        relative_time = self.relative_time)
+
         # print(event_dict['events'][0][0], event_dict['events'][-1][0])
         # print(bbox_dict['bboxes'])
         # print()

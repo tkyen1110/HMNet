@@ -93,6 +93,9 @@ def main(config):
     list_fpath_lbl = get_chunk(list_fpath_lbl, chunk_str=config.test_chunks)
 
     for fpath_evt, fpath_lbl in zip(list_fpath_evt, list_fpath_lbl):
+        # if os.path.basename(fpath_evt) != "17-04-04_11-00-13_cut_15_122500000_182500000_td.npy":
+        #     continue
+
         assert os.path.basename(fpath_evt).replace("_td.npy", "")==os.path.basename(fpath_lbl).replace("_bbox.npy", "")
 
         fpath_out = f"{config.dpath_out}/{fpath_evt.split('/')[-1].replace('_td', '_bbox')}"
@@ -264,7 +267,7 @@ def get_dirname(path):
 
 if __name__ == '__main__':
     '''
-    CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
+    CUDA_VISIBLE_DEVICES=1 python ./scripts/test.py ./config/hmnet_B3_yolox_tbptt.py \
       --pretrained ./pretrained/gen1_hmnet_B3_tbptt.pth --fast --speed_test
 
     CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py \
