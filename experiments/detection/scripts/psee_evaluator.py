@@ -45,7 +45,14 @@ EVAL_CONF_GEN4 = dict(
     time_tol = 25000, # +/- 25 msec (50 msec)
 )
 
-def evaluate_folders(dt_folder, gt_lst, event_folder, camera):
+# EVAL_CONF_GEN4 = dict(
+#     classes = ('background', 'pedestrian', 'two wheeler', 'car', 'truck', 'bus', 'traffic sign', 'traffic light'),
+#     width = 1280//2,
+#     height = 720//2,
+#     time_tol = 25000, # +/- 25 msec (50 msec)
+# )
+
+def evaluate_folders(dt_folder, gt_lst, discard_small_obj, event_folder, camera):
     dt_file_paths = get_list(dt_folder, ext='npy')
     gt_file_paths = get_list(gt_lst, ext='npy')
     assert len(dt_file_paths) == len(gt_file_paths)
@@ -61,23 +68,23 @@ def evaluate_folders(dt_folder, gt_lst, event_folder, camera):
 
     gt_boxes_list = [np.load(p) for p in gt_file_paths]
     # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'confidence', 'track_id', 'invalid')
-    for i, gt_boxes in enumerate(gt_boxes_list):
-        invalids = gt_boxes['invalid']
-        if np.sum(invalids) > 0:
-            gt_boxes = gt_boxes[np.logical_not(invalids)]
-        gt_boxes = rfn.drop_fields(gt_boxes, 'invalid')
-        gt_boxes_list[i] = gt_boxes
+    if 'invalid' in gt_boxes_list[0].dtype.names:
+        for i, gt_boxes in enumerate(gt_boxes_list):
+            invalids = gt_boxes['invalid']
+            if np.sum(invalids) > 0:
+                gt_boxes = gt_boxes[np.logical_not(invalids)]
+            gt_boxes = rfn.drop_fields(gt_boxes, 'invalid')
+            gt_boxes_list[i] = gt_boxes
     gt_boxes_list = [reformat_boxes(p) for p in gt_boxes_list]
     # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'track_id', 'class_confidence')
 
-    min_box_diag = 60 if camera == 'GEN4' else 30
-    min_box_side = 20 if camera == 'GEN4' else 10
     eval_conf = EVAL_CONF_GEN4 if camera == 'GEN4' else EVAL_CONF_GEN1
-
-    filter_boxes_fn = lambda x:filter_boxes(x, int(5e5), min_box_diag, min_box_side)
-
-    gt_boxes_list = map(filter_boxes_fn, gt_boxes_list)
-    result_boxes_list = map(filter_boxes_fn, result_boxes_list)
+    if discard_small_obj:
+        min_box_diag = 60 if camera == 'GEN4' else 30
+        min_box_side = 20 if camera == 'GEN4' else 10
+        filter_boxes_fn = lambda x:filter_boxes(x, int(5e5), min_box_diag, min_box_side)
+        gt_boxes_list = map(filter_boxes_fn, gt_boxes_list)
+        result_boxes_list = map(filter_boxes_fn, result_boxes_list)
     # evaluate_detection(gt_boxes_list, result_boxes_list, npy_file_list, dt_folder, event_folder, **eval_conf)
     evaluate_detection_RED(gt_boxes_list, result_boxes_list, npy_file_list, dt_folder, event_folder, **eval_conf)
 
@@ -85,10 +92,11 @@ def main():
     parser = argparse.ArgumentParser(prog='psee_evaluator.py')
     parser.add_argument('gt_lst', type=str, help='Text file contaiing list of GT .npy files')
     parser.add_argument('dt_folder', type=str, help='RESULT folder containing .npy files')
+    parser.add_argument('--discard_small_obj', action='store_true', default=False)
     parser.add_argument('--event_folder', type=str, help='Event folder containing .dat files')
     parser.add_argument('--camera', type=str, default='GEN4', help='GEN1 (QVGA) or GEN4 (720p)')
     opt = parser.parse_args()
-    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.event_folder, opt.camera)
+    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.discard_small_obj, opt.event_folder, opt.camera)
 
 if __name__ == '__main__':
     '''
@@ -109,5 +117,10 @@ if __name__ == '__main__':
       ./workspace/hmnet_B3_yolox_regular_batch_absolute/result/pred_test_10 \
       --event_folder /home/tkyen/opencv_practice/data_1/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
       --camera GEN1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31/gt \
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31/dt \
+      --camera GEN4
     '''
     main()

@@ -179,7 +179,8 @@ def evaluate_detection_RED(gt_boxes_list, dt_boxes_list, npy_file_list, dt_folde
     """
     flattened_gt = []
     flattened_dt = []
-    evaluator = CocoEvaluator(verbose=True)
+    evaluator = CocoEvaluator(classes=classes, height=height, width=width,
+                              verbose=True)
     for gt_boxes, dt_boxes, npy_file in zip(gt_boxes_list, dt_boxes_list, npy_file_list):
 
         assert np.all(gt_boxes['t'][1:] >= gt_boxes['t'][:-1])
@@ -275,7 +276,6 @@ def _coco_eval(gts, detections, height, width, labelmap=("car", "pedestrian")):
     """
     categories = [{"id": id + 1, "name": class_name, "supercategory": "none"}
                   for id, class_name in enumerate(labelmap)]
-
     dataset, results = _to_coco_format(gts, detections, categories, height=height, width=width)
 
     coco_gt = COCO()
