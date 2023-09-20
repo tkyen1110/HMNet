@@ -45,7 +45,9 @@ trap killpids SIGTERM
 #       python ./scripts/test.py        #
 # # # # # # # # # # # # # # # # # # # # #
 lCmdList=(
-            "CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py --checkpoint checkpoint_59.pth.tar --fast --speed_test --test_chunks 2/2 &" \
+            # "CUDA_VISIBLE_DEVICES=0 python ./scripts/test.py ./config/hmnet_B3_yolox_regular_batch_relative.py --checkpoint checkpoint_59.pth.tar --fast --speed_test --test_chunks 2/2 &" \
+            "CUDA_VISIBLE_DEVICES=$1 python ./scripts/test.py $2 --checkpoint $3 --fast --speed_test --test_chunks $4 &" \
+
          )
 Fun_EvalCmd "${lCmdList[*]}"
 

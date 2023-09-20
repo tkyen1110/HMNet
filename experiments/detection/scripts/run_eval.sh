@@ -69,7 +69,7 @@ test_gt_dir="$Gen4_Automotive_HMNet_dir/test_lbl"
 python ./scripts/psee_evaluator.py \
         ${test_gt_dir} \
         ${test_dt_dir} \
-        --camera GEN1 > ${log_out}/result.txt
-
+        --camera GEN1 > ${log_out}/result.txt \
+        --discard_small_obj
         # --event_folder /tmp2/tkyen/Gen1_Automotive/detection_dataset_duration_60s_ratio_1.0/test \
         
