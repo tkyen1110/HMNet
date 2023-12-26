@@ -38,21 +38,38 @@ EVAL_CONF_GEN1 = dict(
     time_tol = 25000, # +/- 25 msec (50 msec)
 )
 
-EVAL_CONF_GEN4 = dict(
-    classes = ('pedestrian', 'two wheeler', 'car', 'truck', 'bus', 'traffic sign', 'traffic light'),
-    width = 1280,
-    height = 720,
-    time_tol = 25000, # +/- 25 msec (50 msec)
-)
-
 # EVAL_CONF_GEN4 = dict(
-#     classes = ('background', 'pedestrian', 'two wheeler', 'car', 'truck', 'bus', 'traffic sign', 'traffic light'),
-#     width = 1280//2,
-#     height = 720//2,
+#     classes = ('pedestrian', 'two wheeler', 'car', 'truck', 'bus', 'traffic sign', 'traffic light'),
+#     width = 1280,
+#     height = 720,
 #     time_tol = 25000, # +/- 25 msec (50 msec)
 # )
 
-def evaluate_folders(dt_folder, gt_lst, discard_small_obj, event_folder, camera):
+EVAL_CONF_GEN4 = dict(
+    classes = ('background', 'pedestrian', 'two wheeler', 'car', 'truck', 'bus', 'traffic sign', 'traffic light'),
+    width = 1280//2,
+    height = 720//2,
+    time_tol = 25000, # +/- 25 msec (50 msec)
+)
+
+def get_min_stats(boxes_list):
+    min_confidence = 1.0
+    min_class_id = np.inf
+    max_class_id = -np.inf
+    for boxes in boxes_list:
+        min_confidence_ = np.min(boxes['class_confidence'])
+        min_class_id_ = np.min(boxes['class_id'])
+        max_class_id_ = np.max(boxes['class_id'])
+
+        if min_confidence_ < min_confidence:
+            min_confidence = min_confidence_
+        if min_class_id_ < min_class_id:
+            min_class_id = min_class_id_
+        if max_class_id_ > max_class_id:
+            max_class_id = max_class_id_
+    return min_confidence, min_class_id, max_class_id
+
+def evaluate_folders(dt_folder, gt_lst, discard_small_obj, event_folder, camera, dt_confidence, gt_visibility, run_nms):
     dt_file_paths = get_list(dt_folder, ext='npy')
     gt_file_paths = get_list(gt_lst, ext='npy')
     assert len(dt_file_paths) == len(gt_file_paths)
@@ -62,21 +79,35 @@ def evaluate_folders(dt_folder, gt_lst, discard_small_obj, event_folder, camera)
         npy_file_list.append(os.path.basename(gt_file_path))
         assert os.path.basename(dt_file_path)==os.path.basename(gt_file_path)
 
+    print("DT: dtype_names = ", np.load(dt_file_paths[0]).dtype.names)
     result_boxes_list = [np.load(p) for p in dt_file_paths]
-    result_boxes_list = [reformat_boxes(p) for p in result_boxes_list]
+    min_confidence, min_class_id, max_class_id = get_min_stats(result_boxes_list)
+    print("DT: min_confidence = ", min_confidence)
+    print("DT: min_class_id = ", min_class_id)
+    print("DT: max_class_id = ", max_class_id)
+    result_boxes_list = [reformat_boxes(p, confidence=dt_confidence, run_nms=run_nms) for p in result_boxes_list]
+    print("DT: dtype_names = ", result_boxes_list[0].dtype.names)
+    print()
     # result_boxes_list[0].dtype.names = ('t', 'x', 'y', 'w', 'h', 'class_id', 'track_id', 'class_confidence')
 
+    print("GT: dtype_names = ", np.load(gt_file_paths[0]).dtype.names)
     gt_boxes_list = [np.load(p) for p in gt_file_paths]
-    # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'confidence', 'track_id', 'invalid')
-    if 'invalid' in gt_boxes_list[0].dtype.names:
-        for i, gt_boxes in enumerate(gt_boxes_list):
-            invalids = gt_boxes['invalid']
-            if np.sum(invalids) > 0:
-                gt_boxes = gt_boxes[np.logical_not(invalids)]
-            gt_boxes = rfn.drop_fields(gt_boxes, 'invalid')
-            gt_boxes_list[i] = gt_boxes
-    gt_boxes_list = [reformat_boxes(p) for p in gt_boxes_list]
+    min_confidence, min_class_id, max_class_id = get_min_stats(gt_boxes_list)
+    print("GT: min_confidence = ", min_confidence)
+    print("GT: min_class_id = ", min_class_id)
+    print("GT: max_class_id = ", max_class_id)
+    gt_boxes_list = [reformat_boxes(p, visibility=gt_visibility) for p in gt_boxes_list]
+    print("GT: dtype_names = ", gt_boxes_list[0].dtype.names)
+    print()
+
     # gt_boxes_list[0].dtype.names     = ('t', 'x', 'y', 'w', 'h', 'class_id', 'track_id', 'class_confidence')
+    # if 'invalid' in gt_boxes_list[0].dtype.names:
+    #     for i, gt_boxes in enumerate(gt_boxes_list):
+    #         invalids = gt_boxes['invalid']
+    #         if np.sum(invalids) > 0:
+    #             gt_boxes = gt_boxes[np.logical_not(invalids)]
+    #         gt_boxes = rfn.drop_fields(gt_boxes, 'invalid')
+    #         gt_boxes_list[i] = gt_boxes
 
     eval_conf = EVAL_CONF_GEN4 if camera == 'GEN4' else EVAL_CONF_GEN1
     if discard_small_obj:
@@ -95,8 +126,11 @@ def main():
     parser.add_argument('--discard_small_obj', action='store_true', default=False)
     parser.add_argument('--event_folder', type=str, help='Event folder containing .dat files')
     parser.add_argument('--camera', type=str, default='GEN4', help='GEN1 (QVGA) or GEN4 (720p)')
+    parser.add_argument('--dt_confidence', type=float, default=0.1)
+    parser.add_argument('--gt_visibility', type=float, default=1.0)
+    parser.add_argument('--run_nms', action='store_true')
     opt = parser.parse_args()
-    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.discard_small_obj, opt.event_folder, opt.camera)
+    evaluate_folders(opt.dt_folder, opt.gt_lst, opt.discard_small_obj, opt.event_folder, opt.camera, opt.dt_confidence, opt.gt_visibility, opt.run_nms)
 
 if __name__ == '__main__':
     '''
@@ -119,8 +153,28 @@ if __name__ == '__main__':
       --camera GEN1
 
     python ./scripts/psee_evaluator.py \
-      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31/gt \
-      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31/dt \
-      --camera GEN4
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31_Vanilla/gt \
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31_Vanilla/dt \
+      --camera GEN4 --dt_confidence 0.4
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
+      /home/tkyen/opencv_practice/permatrack/exp/tracking/gen4_supinvis_full_data_distributed_dataloader/model_54/dt \
+      --camera GEN4 --dt_confidence 0.1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
+      /home/tkyen/opencv_practice/permatrack/exp/tracking/gen4_supinvis_full_data_distributed_dataloader_consistency/model_55/dt \
+      --camera GEN4 --dt_confidence 0.1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31_Vanilla/gt \
+      /home/tkyen/opencv_practice/permatrack/exp/tracking/gen4_supinvis_full_data_distributed_dataloader/model_43/dt \
+      --camera GEN4 --dt_confidence 0.4 --run_nms
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
+      /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31_Vanilla/dt \
+      --camera GEN4 --dt_confidence 0.1 --gt_visibility 0.4 --run_nms
     '''
     main()
