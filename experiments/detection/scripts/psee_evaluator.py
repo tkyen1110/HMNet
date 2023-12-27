@@ -71,6 +71,9 @@ def get_min_stats(boxes_list):
 
 def evaluate_folders(dt_folder, gt_lst, discard_small_obj, event_folder, camera, dt_confidence, gt_visibility, run_nms):
     dt_file_paths = get_list(dt_folder, ext='npy')
+    # gt_file_paths = []
+    # for dt_file_path in dt_file_paths:
+    #   gt_file_paths.append(dt_file_path.replace(dt_folder, gt_lst))
     gt_file_paths = get_list(gt_lst, ext='npy')
     assert len(dt_file_paths) == len(gt_file_paths)
     print("There are {} GT bboxes and {} PRED bboxes".format(len(gt_file_paths), len(dt_file_paths)))
@@ -176,5 +179,16 @@ if __name__ == '__main__':
       /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
       /home/tkyen/opencv_practice/data_3/Gen4_Automotive_event_cube_paper/result_vanilla_ssd_level_5/evaluation_epoch_31_Vanilla/dt \
       --camera GEN4 --dt_confidence 0.1 --gt_visibility 0.4 --run_nms
+
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
+      /home/tkyen/opencv_practice/permatrack/exp/tracking/gen4_supinvis_dcn_3d_aggregation_8_data/model_130/dt \
+      --camera GEN4 --dt_confidence 0.1
+
+    python ./scripts/psee_evaluator.py \
+      /home/tkyen/opencv_practice/permatrack/data/gen4/annotations/tracking_test \
+      /home/tkyen/opencv_practice/permatrack/exp/tracking/gen4_supinvis_8_data_distributed_dataloader/model_54/dt \
+      --camera GEN4 --dt_confidence 0.1
     '''
     main()
